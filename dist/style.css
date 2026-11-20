@@ -146,3 +146,7 @@ dialog form>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px}
 @media(max-width:365px){.tool-list button,.item-tool button,.history button{width:30px}}
 
 .straighten{justify-self:start}
+
+.wall-standard{border-top:1px solid var(--line);padding-top:8px;display:grid;gap:7px}
+.wall-standard-actions{display:flex;flex-wrap:wrap;gap:5px}
+.wall-standard-actions button{min-height:29px;font-size:.8125rem;padding:2px 6px}

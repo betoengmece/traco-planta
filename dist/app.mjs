@@ -1,4 +1,4 @@
-import { bounds, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, nearestWall, placeOpening, pointAt, validateOpening } from './geometry.mjs';
+import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, nearestWall, placeOpening, pointAt, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
@@ -22,14 +22,14 @@ const messages = {
   window: 'Escolha um trecho livre da parede com espaço para a janela.'
 };
 const shortNames = { wall: 'Parede', door: 'Porta', window: 'Janela' };
-let project = withWindowTypes(restore());
+let project = prepareProject(restore());
 let windowTypeId = 'sliding';
 let itemsOpen = false;
 let itemsTab = 'placed';
 const expandedGroups = new Set();
 const placementTools = ['wall','door','window'];
 const placementDefaults = {
-  wall:{length:null,thickness:.15,height:2.7},
+  wall:{length:null,thicknessOverride:null,height:2.7},
   door:{width:.86,height:2.1,sill:0,hinge:'start',side:1}
 };
 const hingeOptions = [['start','Lado 1'],['end','Lado 2']];
@@ -53,6 +53,12 @@ let fitted = false;
 const past = [];
 const future = [];
 renderIcons();
+
+function prepareProject(value) { return withWindowTypes(withWallThickness(value)); }
+
+function placementThickness() {
+  return placementDefaults.wall.thicknessOverride ?? project.wallThickness;
+}
 
 function restore() {
   try {
@@ -92,6 +98,7 @@ function history(from, to) {
   if (!from.length) return;
   to.push(project);
   project = from.pop();
+  placementDefaults.wall.thicknessOverride=null;
   selected = start = hover = preview = wallDrag = openingDrag = null;
   persist();
   refresh();
@@ -270,7 +277,7 @@ function draw() {
   }
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
-      const ghost = { id:'preview-wall',a:start,b:hover,thickness:placementDefaults.wall.thickness };
+      const ghost = { id:'preview-wall',a:start,b:hover,thickness:placementThickness() };
       paintWall(ghost,drawing.walls,true);
       wallMeasure(ghost, 20);
     }
@@ -385,8 +392,8 @@ plan.addEventListener('pointerdown', event => {
     const point = snap(pos, event.shiftKey);
     if (!start) { start=point; hover=point; refresh(); return; }
     if (distance(start,point)<minimumWallLength-.00001) { setHint('Escolha um ponto a pelo menos 15 cm do início.'); return; }
-    const {thickness,height}=placementDefaults.wall;
-    const wall = {id:crypto.randomUUID(),a:start,b:point,thickness,height};
+    const wall={id:crypto.randomUUID(),a:start,b:point,
+      thickness:placementThickness(),height:placementDefaults.wall.height};
     const closes = project.walls.some(existing => distance(existing.a,point)<.001 || distance(existing.b,point)<.001);
     start = closes ? null : point;
     hover = point;
@@ -459,7 +466,10 @@ function cursor() { plan.style.cursor = tool==='pan' ? 'grab' : tool==='select' 
 function setHint(text) { $('hint').textContent=text; }
 function setTool(next) {
   if (view!=='plan') return;
-  if (next!==tool) start=null;
+  if (next!==tool) {
+    start=null;
+    if (tool==='wall') placementDefaults.wall.thicknessOverride=null;
+  }
   tool=next;
   placementPropertiesOpen=placementTools.includes(next);
   hover=preview=null;
@@ -637,10 +647,11 @@ function inspector() {
     }
     $('inspector-title').textContent='Antes de colocar';
     if (tool==='wall') {
-      const {length:fixed,thickness,height}=placementDefaults.wall;
+      const {length:fixed,height}=placementDefaults.wall;
       const fields=numberField('length','Comprimento fixo',fixed,.15,150,true)+
-        numberField('thickness','Espessura',thickness,.05,1)+numberField('height','Altura',height,.5,12);
+        numberField('thickness','Espessura',placementThickness(),.05,1)+numberField('height','Altura',height,.5,12);
       renderProperties(panel,'wall','Parede',fields,'Deixe o comprimento vazio para desenhá-lo livremente.',applyPlacementField);
+      renderWallStandard(panel);
     } else if (tool==='door') {
       renderProperties(panel,'door','Porta',openingFields(placementDefaults.door,'door'),'',applyPlacementField);
     } else {
@@ -685,6 +696,51 @@ function inspector() {
   }
 }
 
+function renderWallStandard(panel) {
+  const standard=document.createElement('div');
+  standard.className='wall-standard';
+  const label=document.createElement('p');
+  label.className='type-note';
+  label.textContent='Padrão da planta · '+unit.format(project.wallThickness*100)+' cm';
+  const actions=document.createElement('div');
+  actions.className='wall-standard-actions';
+
+  function action(label,callback) {
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='plain';
+    button.textContent=label;
+    button.onclick=callback;
+    actions.append(button);
+  }
+
+  action('Usar padrão',() => {
+    placementDefaults.wall.thicknessOverride=null;
+    hover=null;
+    refresh();
+  });
+  action('Definir padrão',() => saveWallThickness(false));
+  if (project.walls.length) action('Aplicar a todas as paredes',() => saveWallThickness(true));
+  standard.append(label,actions);
+  panel.append(standard);
+}
+
+function saveWallThickness(applyToAll) {
+  if ($('properties').querySelector('[data-field="thickness"][aria-invalid="true"]')) return;
+  const thickness=placementThickness();
+  const changed=applyToAll ? project.walls.filter(wall=>wall.thickness!==thickness).length : 0;
+  placementDefaults.wall.thicknessOverride=null;
+  hover=null;
+  if (changed || thickness!==project.wallThickness) {
+    commit(() => { project=changeWallThickness(project,thickness,applyToAll); });
+  } else refresh();
+  const caption=unit.format(thickness*100)+' cm';
+  const message=applyToAll
+    ? 'Todas as '+project.walls.length+' paredes e o padrão da planta estão em '+caption+'.'
+    : 'Novas paredes usarão '+caption+' por padrão.';
+  setHint(message);
+}
+
 function showPropertyError(element,message) {
   const field=$('properties').querySelector('.property-feedback');
   if (!field) return;
@@ -724,7 +780,9 @@ function applyPlacementField(element) {
     }
     if (type[name]!==value) saveWindowType(change,false);
   } else {
-    placementDefaults[tool][name]=value;
+    if (tool==='wall' && name==='thickness')
+      placementDefaults.wall.thicknessOverride=value===project.wallThickness ? null : value;
+    else placementDefaults[tool][name]=value;
     if (tool==='wall' && name==='length') {
       const fixedHint=start ? 'Clique na direção da parede para aplicar o comprimento fixo.' : 'Clique no ponto inicial da parede.';
       setHint(value===null ? tools.wall[1] : fixedHint);
@@ -922,7 +980,8 @@ $('new-dialog').onclose=() => {
   if (choice!=='blank' && choice!=='template') return;
   selected=start=hover=preview=wallDrag=openingDrag=null;
   commit(() => {
-    project=withWindowTypes(choice==='template' ? defaultProject() : {name:'Sem título',walls:[],openings:[]});
+    project=prepareProject(choice==='template' ? defaultProject() : {name:'Sem título',walls:[],openings:[]});
+    placementDefaults.wall.thicknessOverride=null;
   });
   if (view!=='plan') setView('plan');
   setTool(choice==='template' ? 'select' : 'wall');

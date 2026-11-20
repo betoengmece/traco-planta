@@ -73,6 +73,28 @@ export function placeOpening(project,opening,position,{scale,magnetism}) {
   return validateOpening(next,hit.wall,project.openings) ? next : null;
 }
 
+export const defaultWallThickness = .15;
+
+export function withWallThickness(project) {
+  if (Number.isFinite(project.wallThickness) && project.wallThickness>=.05 && project.wallThickness<=1) return project;
+  const counts=new Map();
+  for (const wall of project.walls) {
+    if (!Number.isFinite(wall.thickness) || wall.thickness<.05 || wall.thickness>1) continue;
+    const thickness=Math.round(wall.thickness*1000)/1000;
+    const entry=counts.get(thickness) ?? {thickness,count:0,span:0};
+    entry.count++;
+    entry.span+=length(wall);
+    counts.set(thickness,entry);
+  }
+  const predominant=[...counts.values()].sort((a,b)=>(b.count-a.count) || (b.span-a.span))[0];
+  return { ...project, wallThickness:predominant?.thickness ?? defaultWallThickness };
+}
+
+export function changeWallThickness(project,thickness,applyToAll) {
+  const walls=applyToAll ? project.walls.map(wall=>({ ...wall, thickness })) : project.walls;
+  return { ...project, wallThickness:thickness, walls };
+}
+
 export function bounds(project) {
   if (!project.walls.length) return { x: 0, y: 0, width: 6, depth: 5 };
   const points = project.walls.flatMap(wall => [wall.a, wall.b]);

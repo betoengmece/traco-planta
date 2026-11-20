@@ -1,4 +1,4 @@
-import { length } from './geometry.mjs';
+import { defaultWallThickness, length } from './geometry.mjs';
 
 // Coordinates are in metres, relative to the upper-left corner of the source plan.
 const leftRoom = 2.9733;
@@ -66,7 +66,7 @@ const slidingWindows = [
 
 export function defaultProject() {
   const walls = segments.map(([id,x,y,endX,endY]) => ({
-    id, a:{x,y}, b:{x:endX,y:endY}, height:2.5, thickness:.075
+    id, a:{x,y}, b:{x:endX,y:endY}, height:2.5, thickness:defaultWallThickness
   }));
   const byId = new Map(walls.map(wall => [wall.id,wall]));
   function opening(id, wallId, center, details) {
@@ -81,5 +81,5 @@ export function defaultProject() {
       opening('window-'+index,wall,center,{type:'window',width:1.32,height:2.1,sill:.11})),
     opening('casement','entry',4.9227,{type:'window',width:1.152,height:1.34,sill:.87,casement:true,side:-1})
   ];
-  return {name:'Planta da casa',walls,openings,template:'house'};
+  return {name:'Planta da casa',walls,openings,template:'house',wallThickness:defaultWallThickness};
 }
