@@ -33,6 +33,23 @@ export function validateOpening(opening, wall, siblings) {
     });
 }
 
+export function placeOpening(project,opening,position,{scale,magnetism}) {
+  const hit = nearestWall(position,project.walls,13/scale);
+  if (!hit) return null;
+  const wallLength = length(hit.wall);
+  const margin = (opening.width/2 + .05)/wallLength;
+  if (margin > .5) return null;
+
+  const distanceFromStart = magnetism ? Math.round(hit.t*wallLength*10)/10 : hit.t*wallLength;
+  const next = { ...opening, wallId:hit.wall.id, t:clamp(distanceFromStart/wallLength,margin,1-margin) };
+  const previous = project.walls.find(wall => wall.id===opening.wallId);
+  if (previous && Math.cos(heading(previous)-heading(hit.wall)) < -.5) {
+    next.hinge=opening.hinge==='end' ? 'start' : 'end';
+    next.side=-opening.side;
+  }
+  return validateOpening(next,hit.wall,project.openings) ? next : null;
+}
+
 export function bounds(project) {
   if (!project.walls.length) return { x: 0, y: 0, width: 6, depth: 5 };
   const points = project.walls.flatMap(wall => [wall.a, wall.b]);

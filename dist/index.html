@@ -23,11 +23,15 @@
 <main>
   <aside class="tools" aria-label="Ferramentas">
     <div class="tool-list">
-      <button data-tool="select" aria-label="Selecionar" title="Selecionar (V)" aria-pressed="true"><i data-icon="cursor"></i></button>
-      <button data-tool="wall" aria-label="Parede" title="Parede (P)" aria-pressed="false"><i data-icon="wall"></i></button>
-      <button data-tool="door" aria-label="Porta" title="Porta (D)" aria-pressed="false"><i data-icon="door"></i></button>
-      <button data-tool="window" aria-label="Janela" title="Janela (J)" aria-pressed="false"><i data-icon="window"></i></button>
-      <button data-tool="pan" aria-label="Mover vista" title="Mover vista (M)" aria-pressed="false"><i data-icon="hand"></i></button>
+      <button aria-keyshortcuts="V" data-tool="select" aria-label="Selecionar" title="Selecionar (V)" aria-pressed="true"><i data-icon="cursor"></i><kbd aria-hidden="true">V</kbd></button>
+      <button aria-keyshortcuts="P" data-tool="wall" aria-label="Parede" title="Parede (P)" aria-pressed="false"><i data-icon="wall"></i><kbd aria-hidden="true">P</kbd></button>
+      <button aria-keyshortcuts="D" data-tool="door" aria-label="Porta" title="Porta (D)" aria-pressed="false"><i data-icon="door"></i><kbd aria-hidden="true">D</kbd></button>
+      <button aria-keyshortcuts="J" data-tool="window" aria-label="Janela" title="Janela (J)" aria-pressed="false"><i data-icon="window"></i><kbd aria-hidden="true">J</kbd></button>
+      <button aria-keyshortcuts="M" data-tool="pan" aria-label="Mover vista" title="Mover vista (M)" aria-pressed="false"><i data-icon="hand"></i><kbd aria-hidden="true">M</kbd></button>
+    </div>
+    <div class="item-tool">
+      <button id="magnetism" aria-pressed="true" aria-keyshortcuts="G" aria-label="Magnetismo" title="Magnetismo ligado (G)"><i data-icon="magnet"></i><kbd aria-hidden="true">G</kbd></button>
+      <button id="items-toggle" aria-expanded="false" aria-controls="items" aria-keyshortcuts="I" aria-label="Itens" title="Itens (I)"><i data-icon="list"></i><kbd aria-hidden="true">I</kbd></button>
     </div>
     <div class="history">
       <button id="undo" title="Desfazer (⌘/Ctrl + Z)" aria-label="Desfazer"><i data-icon="undo"></i></button>
@@ -40,6 +44,14 @@
       <div id="model" hidden aria-label="Modelo em três dimensões"></div>
       <div id="empty" class="empty" hidden><i data-icon="plan"></i><strong>Planta em branco</strong><span>Escolha Parede para começar a desenhar.</span></div>
       <div class="orientation" id="orientation"><b>N</b><i data-icon="north"></i></div>
+      <aside id="items" class="items" aria-labelledby="items-title" hidden>
+        <div class="inspector-head"><h2 id="items-title">Itens</h2><button id="close-items" aria-label="Fechar itens" title="Fechar itens"><i data-icon="close"></i></button></div>
+        <div class="item-tabs" aria-label="Conteúdo da lista">
+          <button id="placed-items" aria-pressed="true">Na planta</button>
+          <button id="catalog-items" aria-pressed="false">Adicionar</button>
+        </div>
+        <div id="item-list"></div>
+      </aside>
       <aside id="inspector" class="inspector" aria-labelledby="inspector-title" hidden>
         <div class="inspector-head"><h2 id="inspector-title">Propriedades</h2><button id="close-properties" aria-label="Fechar propriedades" title="Fechar propriedades"><i data-icon="close"></i></button></div>
         <div id="properties"></div>
