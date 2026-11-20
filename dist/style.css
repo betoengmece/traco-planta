@@ -150,3 +150,6 @@ dialog form>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px}
 .wall-standard{border-top:1px solid var(--line);padding-top:8px;display:grid;gap:7px}
 .wall-standard-actions{display:flex;flex-wrap:wrap;gap:5px}
 .wall-standard-actions button{min-height:29px;font-size:.8125rem;padding:2px 6px}
+
+.multi-select{justify-self:start}
+.multi-select[aria-pressed=true]{background:var(--pale);color:var(--accent);border-color:#a8c8b9}

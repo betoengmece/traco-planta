@@ -1,8 +1,8 @@
-import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, nearestWall, placeOpening, pointAt, validateOpening, withWallThickness } from './geometry.mjs';
+import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
-import { minimumWallLength, moveWallEndpoint, snapWallPoint, straightenedEnd, stretchPoint } from './wall-edit.mjs';
+import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
 const plan = $('plan');
@@ -11,7 +11,7 @@ const context = plan.getContext('2d');
 const storageKey = 'traco-planta-v1';
 const unit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const tools = {
-  select: ['Selecionar', 'Clique em uma parede, porta ou janela para editar.'],
+  select: ['Selecionar', 'Clique para selecionar. Shift + clique seleciona várias paredes.'],
   wall: ['Parede', 'Clique no início e depois no fim de cada parede. Esc encerra.'],
   door: ['Porta', 'Clique sobre uma parede para encaixar a porta.'],
   window: ['Janela', 'Clique sobre uma parede para encaixar a janela.'],
@@ -38,11 +38,14 @@ let placementPropertiesOpen = false;
 let tool = 'select';
 let view = 'plan';
 let selected = null;
+const selectedWalls = new Set();
+let multiSelect = false;
 let start = null;
 let hover = null;
 let preview = null;
 let dragging = null;
 let wallDrag = null;
+let wallGroupDrag = null;
 let openingDrag = null;
 let magnetism = true;
 let model = null;
@@ -94,12 +97,32 @@ function commit(change, { structure = false, update = true } = {}) {
   if (update) refresh();
 }
 
+function setSelection(item, toggle=false) {
+  if (toggle && item?.type==='wall') {
+    if (selectedWalls.has(item.id)) selectedWalls.delete(item.id);
+    else selectedWalls.add(item.id);
+    const id=[...selectedWalls].at(-1);
+    selected=id ? {id,type:'wall'} : null;
+    return;
+  }
+  selected=item;
+  selectedWalls.clear();
+  if (item?.type==='wall') selectedWalls.add(item.id);
+}
+
+function resetSelection() {
+  setSelection(null);
+  multiSelect=false;
+  dragging=wallDrag=openingDrag=wallGroupDrag=null;
+}
+
 function history(from, to) {
   if (!from.length) return;
   to.push(project);
   project = from.pop();
   placementDefaults.wall.thicknessOverride=null;
-  selected = start = hover = preview = wallDrag = openingDrag = null;
+  start=hover=preview=null;
+  resetSelection();
   persist();
   refresh();
 }
@@ -185,7 +208,7 @@ function inWallFrame(wall, paint) {
 function paintWall(wall, walls, ghost = false) {
   const caps=joinedWallCaps(wall,walls);
   inWallFrame(wall, (width, thickness) => {
-    const active = selected?.id === wall.id;
+    const active = selectedWalls.has(wall.id);
     thickness = Math.max(3, thickness);
     context.fillStyle = ghost ? '#52ac8a96' : active ? '#21866a' : '#25493e';
     context.fillRect(-caps.a*camera.scale,-thickness/2,width+(caps.a+caps.b)*camera.scale,thickness);
@@ -258,19 +281,19 @@ function wallMeasure(wall, offset = 25) {
 function draw() {
   context.clearRect(0,0,size.width,size.height);
   grid();
-  paintFootprint();
-  const drawing = wallDrag?.change || project;
+  const drawing = wallGroupDrag?.change || wallDrag?.change || project;
+  if (drawing===project) paintFootprint();
   drawing.walls.forEach(wall => paintWall(wall,drawing.walls));
   drawing.openings.forEach(opening => {
     const position = openingDrag?.next?.id===opening.id ? openingDrag.next : opening;
     paintOpening(position,false,drawing.walls);
   });
-  const selectedWall = drawing.walls.find(wall => wall.id === selected?.id);
+  const selectedWall = selectedWalls.size===1 ? drawing.walls.find(wall => selectedWalls.has(wall.id)) : null;
   if (selectedWall) {
     wallMeasure(selectedWall);
-    for (const point of [selectedWall.a, selectedWall.b]) dot(point, '#23775f');
+    if (!multiSelect) for (const point of [selectedWall.a, selectedWall.b]) dot(point, '#23775f');
     if (wallDrag?.change===false) dot(wallDrag.point,'#a64736');
-  } else if (project.template === 'house') {
+  } else if (drawing===project && project.template==='house') {
     const box = bounds(project);
     wallMeasure({a:{x:box.x,y:box.y},b:{x:box.x+box.width,y:box.y}},24);
     wallMeasure({a:{x:box.x,y:box.y+box.depth},b:{x:box.x,y:box.y}},23);
@@ -309,7 +332,7 @@ function snap(point, orthogonal) {
 }
 
 function endpointAt(position) {
-  if (selected?.type!=='wall') return null;
+  if (multiSelect || selectedWalls.size!==1) return null;
   const wall=project.walls.find(candidate => candidate.id===selected.id);
   if (!wall) return null;
   const edge=distance(position,wall.a) <= distance(position,wall.b) ? 'a' : 'b';
@@ -338,8 +361,14 @@ function hitTest(point) {
       (Math.abs(relativeX) < 6/camera.scale || Math.abs(Math.hypot(relativeX,relativeY)-opening.width)<7/camera.scale);
   });
   if (openings.length) return { id:openings[0].id, type:openings[0].type };
-  const wall = nearestWall(point, project.walls, 11/camera.scale)?.wall;
-  return wall ? {id:wall.id,type:'wall'} : null;
+  return hitWall(point);
+}
+
+function hitWall(point) {
+  const hit=project.walls.map(wall=>projectToWall(point,wall))
+    .filter(({wall,distance:gap})=>gap<=Math.max(10/camera.scale,wall.thickness/2+5/camera.scale))
+    .sort((a,b)=>a.distance-b.distance)[0];
+  return hit ? {id:hit.wall.id,type:'wall'} : null;
 }
 
 function projectWallLocal(point, wall) {
@@ -369,23 +398,8 @@ plan.addEventListener('pointerdown', event => {
     if ($('properties').querySelector('[aria-invalid="true"]')) return;
   }
   const pos = world(p);
-  if (tool === 'select') {
-    const endpoint=endpointAt(pos);
-    if (endpoint) {
-      wallDrag={...endpoint,origin:p,point:endpoint.wall[endpoint.edge],change:null};
-      plan.setPointerCapture(event.pointerId);
-      plan.style.cursor='grabbing';
-      return;
-    }
-    selected = hitTest(pos);
-    if (selected && selected.type!=='wall') {
-      const opening=project.openings.find(item => item.id===selected.id);
-      const wall=project.walls.find(item => item.id===opening.wallId);
-      openingDrag={opening,center:pointAt(wall,opening.t),origin:p,next:null};
-      plan.setPointerCapture(event.pointerId);
-      plan.style.cursor='grabbing';
-    }
-    refresh();
+  if (tool==='select') {
+    selectOnPlan(event,p,pos);
     return;
   }
   if (tool === 'wall') {
@@ -403,14 +417,62 @@ plan.addEventListener('pointerdown', event => {
   const draft = openingAt(pos,tool);
   if (!draft) { setHint(messages[tool]); return; }
   const placed = { ...draft, id:crypto.randomUUID() };
-  selected = {id:placed.id,type:placed.type};
+  setSelection({id:placed.id,type:placed.type});
   preview = null;
   commit(() => project.openings.push(placed));
 });
 
+function selectOnPlan(event,p,position) {
+  const endpoint=event.shiftKey ? null : endpointAt(position);
+  if (endpoint) {
+    wallDrag={...endpoint,origin:p,point:endpoint.wall[endpoint.edge],change:null};
+    capture();
+    return;
+  }
+  const wall=hitWall(position);
+  const dragSelection=selectedWalls.size>1 && wall && selectedWalls.has(wall.id);
+  const item=event.shiftKey || multiSelect || dragSelection ? wall : hitTest(position);
+  if (event.shiftKey || (multiSelect && item?.type==='wall' && !selectedWalls.has(item.id))) {
+    if (item?.type==='wall') setSelection(item,true);
+    refresh();
+    return;
+  }
+  if (item?.type==='wall') {
+    if (!selectedWalls.has(item.id)) setSelection(item);
+    wallGroupDrag={origin:p,ids:new Set(selectedWalls),item,moved:false,change:null};
+    capture();
+  } else {
+    setSelection(item);
+    if (item) {
+      const opening=project.openings.find(entry=>entry.id===item.id);
+      const wall=project.walls.find(entry=>entry.id===opening.wallId);
+      openingDrag={opening,center:pointAt(wall,opening.t),origin:p,next:null};
+      capture();
+    }
+  }
+  refresh();
+
+  function capture() {
+    plan.setPointerCapture(event.pointerId);
+    plan.style.cursor='grabbing';
+  }
+}
+
 plan.addEventListener('pointermove', event => {
   const p = coordinate(event);
-  if (wallDrag) {
+  if (wallGroupDrag) {
+    const {origin,ids}=wallGroupDrag;
+    if (distance(p,origin)<2) {
+      wallGroupDrag.change=null;
+    } else {
+      wallGroupDrag.moved=true;
+      const delta=wallDragDelta({x:(p.x-origin.x)/camera.scale,y:(p.y-origin.y)/camera.scale},magnetism);
+      wallGroupDrag.change=moveWallGroup(project,ids,delta);
+    }
+    setHint(wallGroupDrag.change===false
+      ? 'Nessa posição, uma junção se solta ou falta espaço para uma abertura.'
+      : 'Solte para mover '+(ids.size===1 ? 'a parede.' : 'as '+ids.size+' paredes selecionadas.'));
+  } else if (wallDrag) {
     if (distance(p,wallDrag.origin)<2) {
       wallDrag.point=wallDrag.wall[wallDrag.edge];
       wallDrag.change=null;
@@ -435,8 +497,8 @@ plan.addEventListener('pointermove', event => {
   } else {
     const pos = world(p);
     if (tool==='select') {
-      const hit=hitTest(pos);
-      plan.style.cursor=endpointAt(pos) || (hit && hit.type!=='wall') ? 'grab' : 'default';
+      const hit=multiSelect ? hitWall(pos) : hitTest(pos);
+      plan.style.cursor=hit || endpointAt(pos) ? 'grab' : 'default';
     }
     hover = tool === 'wall' ? snap(pos,event.shiftKey) : null;
     preview = ['door','window'].includes(tool) ? openingAt(pos,tool) : null;
@@ -444,13 +506,17 @@ plan.addEventListener('pointermove', event => {
   draw();
 });
 function endDrag(event) {
-  const change=wallDrag?.change;
+  const group=wallGroupDrag;
+  const change=group?.change ?? wallDrag?.change;
   const previous=openingDrag?.opening;
   const next=openingDrag?.next;
-  dragging=wallDrag=openingDrag=null;
+  dragging=wallDrag=openingDrag=wallGroupDrag=null;
   cursor();
   if (event.type==='pointerup' && change) {
     commit(() => { project.walls=change.walls; project.openings=change.openings; },{structure:true});
+  } else if (event.type==='pointerup' && group && multiSelect && !group.moved) {
+    setSelection(group.item,true);
+    refresh();
   } else if (event.type==='pointerup' && next &&
              (next.wallId!==previous.wallId || Math.abs(next.t-previous.t)>.000001)) {
     commit(() => { project.openings=project.openings.map(opening => opening.id===next.id ? next : opening); });
@@ -458,7 +524,7 @@ function endDrag(event) {
 }
 plan.addEventListener('pointerup',endDrag);
 plan.addEventListener('pointercancel',endDrag);
-plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !openingDrag) { hover=preview=null; draw(); } });
+plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !openingDrag && !wallGroupDrag) { hover=preview=null; draw(); } });
 plan.addEventListener('wheel',event => { event.preventDefault(); zoomPlan(Math.exp(-event.deltaY*.001),coordinate(event)); },{passive:false});
 plan.addEventListener('contextmenu',event => event.preventDefault());
 
@@ -473,7 +539,7 @@ function setTool(next) {
   tool=next;
   placementPropertiesOpen=placementTools.includes(next);
   hover=preview=null;
-  if (next!=='select') selected=null;
+  if (next!=='select') resetSelection();
   cursor();
   refresh();
 }
@@ -509,15 +575,18 @@ function itemRow(label,detail,action,type) {
   return button;
 }
 
-function selectItem(item,type) {
+function selectItem(item,type,event) {
   if (view!=='plan') setView('plan');
   const wall=type==='wall' ? item : project.walls.find(candidate => candidate.id===item.wallId);
   if (!wall) return;
-  const point=pointAt(wall,type==='wall' ? .5 : item.t);
-  camera.x=point.x;
-  camera.y=point.y;
-  selected={id:item.id,type};
-  if (matchMedia('(max-width: 600px)').matches) setItems(false);
+  const toggle=type==='wall' && (event.shiftKey || multiSelect);
+  if (!toggle) {
+    const point=pointAt(wall,type==='wall' ? .5 : item.t);
+    camera.x=point.x;
+    camera.y=point.y;
+  }
+  setSelection({id:item.id,type},toggle);
+  if (!toggle && matchMedia('(max-width: 600px)').matches) setItems(false);
   setTool('select');
 }
 
@@ -574,9 +643,9 @@ function renderItems() {
       children.className='item-children';
       entries.forEach((entry,index) => {
         const row=itemRow(shortNames[type]+' '+(index+1),type==='wall' ? metres(length(entry)) : sizeLabel(entry),
-          () => selectItem(entry,type));
+          event => selectItem(entry,type,event));
         row.dataset.itemKey=entry.id;
-        if (selected?.id===entry.id) row.setAttribute('aria-current','true');
+        if (selected?.id===entry.id || selectedWalls.has(entry.id)) row.setAttribute('aria-current','true');
         children.append(row);
       });
       details.append(summary,children);
@@ -662,6 +731,14 @@ function inspector() {
     }
     return;
   }
+  if (view==='plan' && selectedWalls.size>1) {
+    $('inspector').hidden=false;
+    $('inspector-title').textContent='Paredes selecionadas';
+    panel.innerHTML='<div class="property-kind"><i>'+icon('wall')+'</i>'+selectedWalls.size+' paredes</div>'+
+      '<p class="type-note">Arraste o corpo de uma das paredes para mover o conjunto.</p>';
+    renderMultiSelect(panel);
+    return;
+  }
   const item=selected?.type==='wall'
     ? project.walls.find(wall => wall.id===selected.id)
     : project.openings.find(opening => opening.id===selected?.id);
@@ -679,6 +756,7 @@ function inspector() {
     count>1 ? 'As medidas valem para as '+count+' janelas deste tipo.' : '';
   renderProperties(panel,selected.type,findWindowType(item)?.name ?? shortNames[selected.type],fields,note,
     element => applyField(item,element),true);
+  if (selected.type==='wall') renderMultiSelect(panel);
   if (selected.type==='wall' && straightenedEnd(item)) {
     const button=document.createElement('button');
     button.className='plain straighten';
@@ -694,6 +772,22 @@ function inspector() {
     };
     panel.querySelector('#remove-selection').before(button);
   }
+}
+
+function renderMultiSelect(panel) {
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='plain multi-select';
+  button.textContent='Seleção múltipla';
+  button.setAttribute('aria-pressed',String(multiSelect));
+  button.onclick=() => {
+    multiSelect=!multiSelect;
+    refresh();
+    $('properties').querySelector('.multi-select')?.focus();
+  };
+  const removeButton=panel.querySelector('#remove-selection');
+  if (removeButton) removeButton.before(button);
+  else panel.append(button);
 }
 
 function renderWallStandard(panel) {
@@ -862,9 +956,9 @@ function applyField(item, element) {
 }
 
 function remove() {
-  if (!selected || view!=='plan') return;
+  if (!selected || selectedWalls.size>1 || view!=='plan') return;
   const {id,type} = selected;
-  selected=null;
+  setSelection(null);
   commit(() => {
     if (type==='wall') project.walls=project.walls.filter(wall => wall.id!==id);
     project.openings=project.openings.filter(opening => opening.id!==id && opening.wallId!==id);
@@ -881,7 +975,11 @@ function refresh() {
   if (tool==='window') hint=activeWindowType().name+' · clique em uma parede.';
   if (tool==='wall' && placementDefaults.wall.length!==null)
     hint=start ? 'Clique na direção da parede para aplicar o comprimento fixo.' : 'Clique no ponto inicial da parede.';
-  if (tool==='select' && selected?.type==='wall') hint='Arraste uma ponta para esticar a parede no mesmo ângulo.';
+  if (tool==='select' && selected?.type==='wall') {
+    if (multiSelect) hint='Clique em outros trechos para incluir. Arraste uma parede selecionada para mover.';
+    else if (selectedWalls.size>1) hint='Arraste uma das paredes selecionadas. Shift + clique adiciona ou remove trechos.';
+    else hint='Arraste o corpo para mover ou uma ponta para esticar. Shift + clique seleciona mais paredes.';
+  }
   if (tool==='select' && selected && selected.type!=='wall') hint='Arraste o item para outro trecho de parede.';
   setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
@@ -908,7 +1006,8 @@ async function setView(next) {
   if (view===next) return;
   const turn=++viewChange;
   view=next;
-  start=hover=preview=selected=wallDrag=openingDrag=null;
+  start=hover=preview=null;
+  resetSelection();
   const isPlan=next==='plan';
   plan.hidden=!isPlan;
   $('model').hidden=isPlan;
@@ -961,7 +1060,7 @@ $('project-name').onchange=event => {
 document.querySelectorAll('[data-tool]').forEach(button => { button.onclick=() => setTool(button.dataset.tool); });
 $('close-properties').onclick=() => {
   if (placementTools.includes(tool)) placementPropertiesOpen=false;
-  else selected=null;
+  else resetSelection();
   refresh();
 };
 $('items-toggle').onclick=() => setItems(!itemsOpen);
@@ -978,7 +1077,8 @@ $('new').onclick=() => { $('new-dialog').returnValue=''; $('new-dialog').showMod
 $('new-dialog').onclose=() => {
   const choice=$('new-dialog').returnValue;
   if (choice!=='blank' && choice!=='template') return;
-  selected=start=hover=preview=wallDrag=openingDrag=null;
+  start=hover=preview=null;
+  resetSelection();
   commit(() => {
     project=prepareProject(choice==='template' ? defaultProject() : {name:'Sem título',walls:[],openings:[]});
     placementDefaults.wall.thicknessOverride=null;
@@ -1002,7 +1102,7 @@ document.addEventListener('keydown',event => {
   if (key==='g') { $('magnetism').click(); return; }
   const shortcuts={v:'select',p:'wall',d:'door',j:'window',m:'pan'};
   if (shortcuts[key]) setTool(shortcuts[key]);
-  else if (key==='escape') { start=hover=preview=selected=wallDrag=openingDrag=null; cursor(); refresh(); }
+  else if (key==='escape') { start=hover=preview=null; resetSelection(); cursor(); refresh(); }
   else if (['delete','backspace'].includes(key) && selected) { event.preventDefault(); remove(); }
 });
 

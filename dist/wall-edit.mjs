@@ -116,31 +116,113 @@ export function stretchPoint(wall,edge,raw,walls,{scale,magnetism}) {
   return along(fixed,axis,Math.max(minimumWallLength,target ?? roundLength(projected)));
 }
 
-export function moveWallEndpoint(project,wall,edge,point) {
-  const original = wall[edge];
-  if (distance(original,point) < epsilon) return null;
-  const moved = new Map();
-  const walls = project.walls.map(candidate => {
-    const endpoint = candidate.id === wall.id ? edge :
-      ['a','b'].find(key => distance(candidate[key],original) < epsilon);
-    if (!endpoint) return candidate;
-    const updated = { ...candidate, [endpoint]:point };
-    moved.set(candidate.id,{previous:candidate,updated,endpoint});
-    return updated;
-  });
-  if ([...moved.values()].some(({updated}) => length(updated) < minimumWallLength-epsilon)) return false;
+function fitWallOpenings(openings,wall,edge) {
+  const size=length(wall);
+  const distanceFromFixed=item=>(edge==='b' ? item.t : 1-item.t)*size;
+  const ordered=[...openings].sort((a,b)=>distanceFromFixed(a)-distanceFromFixed(b));
+  const clearance=.05;
+  const gap=.020001;
+  let remaining=size-clearance;
+  const ends=new Map();
+  for (const item of [...ordered].reverse()) {
+    ends.set(item.id,remaining-item.width/2);
+    remaining-=item.width+gap;
+  }
+  let start=clearance;
+  const adjusted=new Map();
+  for (const item of ordered) {
+    const first=start+item.width/2;
+    const last=ends.get(item.id);
+    if (first>last+epsilon) return null;
+    const center=Math.max(first,Math.min(distanceFromFixed(item),last));
+    adjusted.set(item.id,{ ...item,t:edge==='b' ? center/size : 1-center/size });
+    start=center+item.width/2+gap;
+  }
+  return adjusted;
+}
 
-  const openings = project.openings.map(opening => {
-    const change = moved.get(opening.wallId);
-    if (!change) return opening;
-    const {previous,updated,endpoint} = change;
-    const fromFixed = (endpoint==='b' ? opening.t : 1-opening.t)*length(previous);
-    const fraction = fromFixed/length(updated);
-    return { ...opening, t:endpoint==='b' ? fraction : 1-fraction };
+function finishWallMove(project,walls,changes,slideOpenings=false) {
+  if ([...changes.values()].some(({updated}) => length(updated)<minimumWallLength-epsilon)) return false;
+  let openings=project.openings.map(opening => {
+    const change=changes.get(opening.wallId);
+    if (!change || change.edges.length===2) return opening;
+    const {previous,updated,edges:[edge]}=change;
+    const fromFixed=(edge==='b' ? opening.t : 1-opening.t)*length(previous);
+    const fraction=fromFixed/length(updated);
+    return { ...opening, t:edge==='b' ? fraction : 1-fraction };
   });
-  const blocked = openings.some(opening => {
-    const change = moved.get(opening.wallId);
+  if (slideOpenings) {
+    const adjusted=new Map();
+    for (const {previous,updated,edges} of changes.values()) {
+      if (edges.length!==1 || length(updated)>=length(previous)-epsilon) continue;
+      const attached=openings.filter(opening=>opening.wallId===updated.id);
+      const fit=fitWallOpenings(attached,updated,edges[0]);
+      if (!fit) return false;
+      for (const [id,item] of fit) adjusted.set(id,item);
+    }
+    openings=openings.map(item=>adjusted.get(item.id) ?? item);
+  }
+  const blocked=openings.some(opening => {
+    const change=changes.get(opening.wallId);
     return change && !validateOpening(opening,change.updated,openings);
   });
   return blocked ? false : { walls, openings };
+}
+
+export function moveWallEndpoint(project,wall,edge,point) {
+  const original=wall[edge];
+  if (distance(original,point)<epsilon) return null;
+  const changes=new Map();
+  const walls=project.walls.map(candidate => {
+    const endpoint=candidate.id===wall.id ? edge : ['a','b'].find(key=>distance(candidate[key],original)<epsilon);
+    if (!endpoint) return candidate;
+    const updated={ ...candidate, [endpoint]:point };
+    changes.set(candidate.id,{previous:candidate,updated,edges:[endpoint]});
+    return updated;
+  });
+  return finishWallMove(project,walls,changes);
+}
+
+export function wallDragDelta(vector,magnetism) {
+  if (!magnetism) return vector;
+  const x=Math.abs(vector.x);
+  const y=Math.abs(vector.y);
+  const slope=Math.tan(Math.PI/10);
+  return {
+    x:x<y*slope ? 0 : roundLength(vector.x),
+    y:y<x*slope ? 0 : roundLength(vector.y)
+  };
+}
+
+export function moveWallGroup(project,ids,delta) {
+  if (!ids.size || Math.hypot(delta.x,delta.y)<epsilon) return null;
+  const group=project.walls.filter(wall=>ids.has(wall.id));
+  if (!group.length) return null;
+  const changes=new Map();
+  const walls=project.walls.map(wall => {
+    const edges=['a','b'].filter(edge => ids.has(wall.id) ||
+      group.some(target=>projectToWall(wall[edge],target).distance<epsilon));
+    if (!edges.length) return wall;
+    const updated={ ...wall };
+    for (const edge of edges) {
+      updated[edge]={x:wall[edge].x+delta.x,y:wall[edge].y+delta.y};
+    }
+    changes.set(wall.id,{previous:wall,updated,edges});
+    return updated;
+  });
+
+  if ([...changes.values()].some(({previous,updated}) =>
+    dot(subtract(previous.b,previous.a),subtract(updated.b,updated.a))<=epsilon)) return false;
+
+  const byId=new Map(walls.map(wall=>[wall.id,wall]));
+  for (const wall of project.walls) {
+    const updated=byId.get(wall.id);
+    for (const other of project.walls) {
+      if (other.id===wall.id || (!changes.has(wall.id) && !changes.has(other.id))) continue;
+      const next=byId.get(other.id);
+      if (['a','b'].some(edge => projectToWall(wall[edge],other).distance<epsilon &&
+        projectToWall(updated[edge],next).distance>=epsilon)) return false;
+    }
+  }
+  return finishWallMove(project,walls,changes,true);
 }
