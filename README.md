@@ -21,6 +21,14 @@ Abra [http://127.0.0.1:4173](http://127.0.0.1:4173). Não há instalação de pa
 - `dist/geometry.mjs`, `dist/wall-edit.mjs`, `dist/measure.mjs` e `dist/window-types.mjs` contêm as regras do editor.
 - `dist/template.mjs` define a planta inicial.
 
-O editor salva o projeto no navegador. O desenho já editado em um aparelho fica no armazenamento daquele navegador. A sincronização entre dispositivos e o catálogo de mobília ainda estão pendentes.
+- `dist/sync.mjs` sincroniza o projeto entre aparelhos pelo Supabase.
 
-A [versão publicada](https://traco-planta.betoengmec.chatgpt.site) é hospedada pelo Sites. Este repositório contém o código do editor.
+## Sincronização entre aparelhos
+
+Cada projeto tem um código secreto que fica no link (`#p=...`). O editor salva no navegador e, logo em seguida, na nuvem (tabela `planta_projetos` do Supabase, acessível só pelas funções `planta_get` e `planta_save`). A cada 5 segundos, e sempre que a aba volta ao primeiro plano, ele busca alterações feitas em outro aparelho.
+
+Para abrir no outro aparelho, toque no botão de link no topo e abra o link copiado. Quem tiver o link pode ver e editar o projeto. Sem internet, o editor continua salvando no aparelho e envia quando a conexão voltar.
+
+O catálogo de mobília ainda está pendente.
+
+A versão publicada fica em https://betoengmece.github.io/traco-planta/ e é atualizada automaticamente a cada envio para o `main`.

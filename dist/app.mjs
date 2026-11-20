@@ -3,6 +3,7 @@ import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
+import { startSync } from './sync.mjs';
 import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
@@ -85,10 +86,41 @@ function restore() {
 function persist() {
   try {
     localStorage.setItem(storageKey, JSON.stringify(project));
-    $('save-status').innerHTML = icon('check') + ' Salvo neste navegador';
-  } catch {
-    $('save-status').textContent = 'Armazenamento indisponível';
-  }
+  } catch {}
+  sync?.changed();
+}
+
+let sync = null;
+function syncStatus(state, text) {
+  $('sync-dot').dataset.state = state;
+  $('share').title = text + ' · clique para copiar o link';
+  $('save-status').innerHTML = (state==='ok' ? icon('check') + ' ' : '') + text;
+}
+
+function applyRemote(data, initial=false) {
+  if (!data || typeof data.name !== 'string' || !Array.isArray(data.walls) || !Array.isArray(data.openings)) return;
+  past.push(structuredClone(project));
+  if (past.length > 100) past.shift();
+  future.length = 0;
+  project = prepareProject(data);
+  try { localStorage.setItem(storageKey, JSON.stringify(project)); } catch {}
+  placementDefaults.wall.thicknessOverride=null;
+  start=hover=preview=null;
+  resetSelection();
+  resetMeasure();
+  if (tool==='measure') measureFaces=wallFaces(project.walls);
+  refresh();
+  if (initial && view==='plan') fitPlan();
+}
+
+function toast(text) {
+  document.querySelector('.share-toast')?.remove();
+  const element = document.createElement('div');
+  element.className = 'share-toast';
+  element.setAttribute('role','status');
+  element.textContent = text;
+  document.body.append(element);
+  setTimeout(() => element.remove(), 3500);
 }
 
 function commit(change, { structure = false, update = true } = {}) {
@@ -1197,3 +1229,20 @@ new ResizeObserver(resize).observe(stage);
 document.fonts?.ready.then(draw);
 persist();
 refresh();
+sync = startSync({
+  getProject: () => project,
+  applyRemote,
+  isBusy: () => Boolean(start || dragging || wallDrag || wallGroupDrag || openingDrag || measureStart || $('new-dialog').open || document.activeElement?.matches('input,select,textarea')),
+  status: syncStatus
+});
+$('share').onclick = async () => {
+  const link = sync.link();
+  try {
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ title: 'Traço Planta – ' + project.name, url: link }); return; }
+    await navigator.clipboard.writeText(link);
+    toast('Link copiado. Abra-o no outro aparelho para editar o mesmo projeto.');
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    window.prompt('Copie este link e abra no outro aparelho:', link);
+  }
+};

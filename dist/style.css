@@ -153,3 +153,10 @@ dialog form>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px}
 
 .multi-select{justify-self:start}
 .multi-select[aria-pressed=true]{background:var(--pale);color:var(--accent);border-color:#a8c8b9}
+
+#share{position:relative}
+.sync-dot{position:absolute;top:3px;right:3px;width:7px;height:7px;border-radius:50%;background:#9aa3ad}
+.sync-dot[data-state=ok]{background:#2e9d5b}
+.sync-dot[data-state=busy]{background:#d99a1e}
+.sync-dot[data-state=error]{background:#d1453b}
+.share-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1f2933;color:#fff;padding:10px 14px;border-radius:8px;font-size:.875rem;z-index:50;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.2)}
