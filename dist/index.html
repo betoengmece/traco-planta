@@ -9,19 +9,25 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand"><span class="brand-mark" data-icon="brand"></span>Traço<span>Planta</span></div>
-  <label class="project"><span>Projeto</span><input id="project-name" aria-label="Nome do projeto" maxlength="70"></label>
-  <div class="top-actions"><span id="save-status" class="save-status"></span><button id="new" class="plain" title="Começar uma planta em branco"><i data-icon="file"></i> Novo projeto</button></div>
+  <div class="brand"><span class="brand-mark" data-icon="brand"></span><span class="brand-name">Traço<span>Planta</span></span></div>
+  <label class="project"><input id="project-name" aria-label="Nome do projeto" maxlength="70"></label>
+  <div class="view-toggle" aria-label="Modo de visualização">
+    <button id="plan-button" aria-label="Planta 2D" aria-pressed="true"><i data-icon="plan"></i> <span>2D</span></button>
+    <button id="model-button" aria-label="Vista 3D" aria-pressed="false"><i data-icon="cube"></i> <span>3D</span></button>
+  </div>
+  <div class="top-actions">
+    <span id="save-status" class="save-status" role="status"></span>
+    <button id="new" class="plain" title="Novo projeto" aria-label="Novo projeto"><i data-icon="file"></i><span>Novo projeto</span></button>
+  </div>
 </header>
 <main>
   <aside class="tools" aria-label="Ferramentas">
-    <h2>Ferramentas</h2>
     <div class="tool-list">
-      <button data-tool="select" aria-pressed="true"><i data-icon="cursor"></i><span>Selecionar</span><kbd>V</kbd></button>
-      <button data-tool="wall" aria-pressed="false"><i data-icon="wall"></i><span>Parede</span><kbd>P</kbd></button>
-      <button data-tool="door" aria-pressed="false"><i data-icon="door"></i><span>Porta</span><kbd>D</kbd></button>
-      <button data-tool="window" aria-pressed="false"><i data-icon="window"></i><span>Janela</span><kbd>J</kbd></button>
-      <button data-tool="pan" aria-pressed="false"><i data-icon="hand"></i><span>Mover vista</span><kbd>M</kbd></button>
+      <button data-tool="select" aria-label="Selecionar" title="Selecionar (V)" aria-pressed="true"><i data-icon="cursor"></i></button>
+      <button data-tool="wall" aria-label="Parede" title="Parede (P)" aria-pressed="false"><i data-icon="wall"></i></button>
+      <button data-tool="door" aria-label="Porta" title="Porta (D)" aria-pressed="false"><i data-icon="door"></i></button>
+      <button data-tool="window" aria-label="Janela" title="Janela (J)" aria-pressed="false"><i data-icon="window"></i></button>
+      <button data-tool="pan" aria-label="Mover vista" title="Mover vista (M)" aria-pressed="false"><i data-icon="hand"></i></button>
     </div>
     <div class="history">
       <button id="undo" title="Desfazer (⌘/Ctrl + Z)" aria-label="Desfazer"><i data-icon="undo"></i></button>
@@ -29,32 +35,25 @@
     </div>
   </aside>
   <section class="workspace" aria-label="Editor de planta">
-    <div class="workspace-head">
-      <div><h1 id="view-title">Planta baixa</h1><p id="hint" aria-live="polite"></p></div>
-      <div class="view-toggle" aria-label="Modo de visualização">
-        <button id="plan-button" aria-pressed="true"><i data-icon="plan"></i> Planta <strong>2D</strong></button>
-        <button id="model-button" aria-pressed="false"><i data-icon="cube"></i> Vista <strong>3D</strong></button>
-      </div>
-    </div>
     <div class="stage" id="stage">
       <canvas id="plan" aria-label="Área de desenho da planta"></canvas>
       <div id="model" hidden aria-label="Modelo em três dimensões"></div>
       <div id="empty" class="empty" hidden><i data-icon="plan"></i><strong>Planta em branco</strong><span>Escolha Parede para começar a desenhar.</span></div>
       <div class="orientation" id="orientation"><b>N</b><i data-icon="north"></i></div>
+      <aside id="inspector" class="inspector" aria-labelledby="inspector-title" hidden>
+        <div class="inspector-head"><h2 id="inspector-title">Propriedades</h2><button id="close-properties" aria-label="Fechar propriedades" title="Fechar propriedades"><i data-icon="close"></i></button></div>
+        <div id="properties"></div>
+      </aside>
       <div class="camera">
         <button id="fit" title="Enquadrar planta" aria-label="Enquadrar planta"><i data-icon="fit"></i></button>
         <span class="zoom-group"><button id="zoom-out" aria-label="Diminuir zoom"><i data-icon="minus"></i></button><output id="zoom">100%</output><button id="zoom-in" aria-label="Aumentar zoom"><i data-icon="plus"></i></button></span>
       </div>
       <div id="scale-bar"><span></span>1 m</div>
     </div>
-    <footer class="workspace-foot"><span id="mode"></span><span id="project-count"></span><span class="units">Unidade <strong>metro (m)</strong></span></footer>
+    <footer class="workspace-foot"><strong id="mode"></strong><span id="hint" aria-live="polite"></span><span id="project-count"></span></footer>
   </section>
-  <aside class="inspector" aria-labelledby="inspector-title">
-    <h2 id="inspector-title">Propriedades</h2>
-    <div id="properties"></div>
-  </aside>
 </main>
-<dialog id="new-dialog"><form method="dialog"><h2>Novo projeto</h2><p>Comece com uma planta em branco. Você pode voltar à planta atual usando Desfazer antes de recarregar a página.</p><div><button value="cancel" class="plain">Cancelar</button><button value="new" class="primary">Criar projeto</button></div></form></dialog>
+<dialog id="new-dialog"><form method="dialog"><h2>Novo projeto</h2><p>Escolha a planta padrão ou comece em branco. Use Desfazer para voltar à planta atual antes de recarregar.</p><div><button value="cancel" class="plain">Cancelar</button><button value="blank" class="plain">Em branco</button><button value="template" class="primary">Usar planta padrão</button></div></form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
 <script type="module" src="./app.mjs"></script>
 </body>

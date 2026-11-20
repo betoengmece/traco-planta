@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { bounds, clamp, demoRooms, heading, interval, length } from './geometry.mjs';
+import { bounds, clamp, heading, interval, length } from './geometry.mjs';
+import { houseOutline } from './template.mjs';
 
 export function createModel(host, onZoom) {
   const scene = new THREE.Scene();
@@ -34,10 +35,15 @@ export function createModel(host, onZoom) {
     frame:new THREE.MeshStandardMaterial({color:'#25493e',roughness:.55}),
     door:new THREE.MeshStandardMaterial({color:'#bd916b',roughness:.74}),
     glass:new THREE.MeshStandardMaterial({color:'#78c6c9',transparent:true,opacity:.38,roughness:.16,depthWrite:false}),
-    floor:new THREE.MeshStandardMaterial({color:'#c8bc9f',roughness:.9}),
+    floor:new THREE.MeshStandardMaterial({color:'#c8bc9f',roughness:.9,side:THREE.DoubleSide}),
     base:new THREE.MeshStandardMaterial({color:'#dce7dd',roughness:1})
   };
   const unitBox = new THREE.BoxGeometry(1,1,1);
+  const slabGeometry = new THREE.ShapeGeometry(new THREE.Shape(houseOutline.map(([x,y])=>new THREE.Vector2(x,-y))));
+  slabGeometry.rotateX(-Math.PI/2);
+  const slab = new THREE.Mesh(slabGeometry,mats.floor);
+  slab.position.y=-.018;
+  slab.receiveShadow=true;
   const background = new THREE.Mesh(unitBox,mats.base);
   background.receiveShadow=true;
   scene.add(background);
@@ -73,8 +79,21 @@ export function createModel(host, onZoom) {
     solid(group,center,head-trim/2,0,width,trim,depth,mats.frame);
     if (opening.type==='window') {
       solid(group,center,opening.sill+trim/2,0,width,trim,depth,mats.frame);
-      solid(group,center,opening.sill+opening.height/2,0,width-2*trim,opening.height-2*trim,.025,mats.glass);
-      solid(group,center,opening.sill+opening.height/2,0,trim,opening.height-.02,.043,mats.frame);
+      if (opening.casement) {
+        const leaf=width*.45;
+        const y=opening.sill+opening.height/2;
+        const height=opening.height-2*trim;
+        for (const x of [start+width*.05,end-width*.05]) {
+          const z=opening.side*leaf/2;
+          solid(group,x,y,z,.027,height,leaf,mats.glass);
+          solid(group,x,y,opening.side*leaf,trim,height,trim,mats.frame);
+          solid(group,x,y+height/2,z,trim,trim,leaf,mats.frame);
+          solid(group,x,y-height/2,z,trim,trim,leaf,mats.frame);
+        }
+      } else {
+        solid(group,center,opening.sill+opening.height/2,0,width-2*trim,opening.height-2*trim,.025,mats.glass);
+        solid(group,center,opening.sill+opening.height/2,0,trim,opening.height-.02,.043,mats.frame);
+      }
       return;
     }
     const leafWidth=width-2*trim;
@@ -88,7 +107,7 @@ export function createModel(host, onZoom) {
     group.position.set(wall.a.x,0,wall.a.y);
     group.rotation.y=-heading(wall);
     assembly.add(group);
-    let position=0;
+    let position=-wall.thickness/2;
     for (const opening of openings.sort((a,b)=>a.t-b.t)) {
       const [start,end]=interval(opening,wall);
       fillWall(group,position,start,0,wall.height,wall.thickness);
@@ -97,19 +116,14 @@ export function createModel(host, onZoom) {
       addOpening(group,opening,wall,start,end);
       position=end;
     }
-    fillWall(group,position,length(wall),0,wall.height,wall.thickness);
+    fillWall(group,position,length(wall)+wall.thickness/2,0,wall.height,wall.thickness);
   }
 
   function setProject(project) {
     box=bounds(project);
     assembly.clear();
     project.walls.forEach(wall => addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id)));
-    if (project.example) {
-      for (const room of demoRooms) {
-        const [x,y,right,bottom]=room.edge;
-        solid(assembly,(x+right)/2,-.024,(y+bottom)/2,right-x,.048,bottom-y,mats.floor);
-      }
-    }
+    if (project.template === 'house') assembly.add(slab);
     const span=Math.max(box.width,box.depth);
     const cx=box.x+box.width/2;
     const cz=box.y+box.depth/2;

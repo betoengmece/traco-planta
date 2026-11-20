@@ -15,6 +15,7 @@ const paths = {
   minus:'M5 12h14',
   file:'M13 3H5v18h14V9l-6-6Zm0 0v6h6m-7 3v6m-3-3h6',
   check:'M5 12l4 4L19 6',
+  close:'m6 6 12 12M18 6 6 18',
   trash:'M4 7h16m-14 0 1 14h10l1-14M9 7V4h6v3'
 };
 export function icon(name) {

@@ -45,13 +45,6 @@ export function bounds(project) {
   };
 }
 
-export const demoRooms = [
-  { name: 'Sala', x: -2.62, y: -1.25, edge: [-5,-3.5,-.25,1] },
-  { name: 'Quarto', x: 2.39, y: -1.65, edge: [-.25,-3.5,5,0] },
-  { name: 'Cozinha', x: -3.2, y: 2.2, edge: [-5,1,-1.35,3.6] },
-  { name: 'Banheiro', x: 3.53, y: 1.21, edge: [2.1,0,5,2.45] }
-];
-
 const coords = [
   [-5,-3.5,-.25,-3.5],[-.25,-3.5,5,-3.5],[5,-3.5,5,0],[5,0,5,2.45],
   [5,2.45,2.1,2.45],[2.1,2.45,2.1,3.6],[2.1,3.6,-1.35,3.6],[-1.35,3.6,-5,3.6],
@@ -59,7 +52,7 @@ const coords = [
   [2.1,0,5,0],[2.1,0,2.1,2.45],[-5,1,-1.35,1],[-1.35,1,-1.35,3.6]
 ];
 
-export function exampleProject() {
+export function legacyExampleProject() {
   const walls = coords.map(([x, y, endX, endY], i) => ({
     id: 'w' + i, a: {x, y}, b: {x: endX, y: endY}, height: 2.7, thickness: i < 10 ? .2 : .14
   }));

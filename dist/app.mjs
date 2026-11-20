@@ -1,5 +1,6 @@
-import { bounds, clamp, demoRooms, distance, exampleProject, heading, interval, length, nearestWall, pointAt, validateOpening } from './geometry.mjs';
+import { bounds, clamp, distance, heading, interval, legacyExampleProject, length, nearestWall, validateOpening } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
+import { defaultProject, houseOutline } from './template.mjs';
 
 const $ = id => document.getElementById(id);
 const plan = $('plan');
@@ -39,9 +40,13 @@ renderIcons();
 function restore() {
   try {
     const saved = JSON.parse(localStorage.getItem(storageKey));
-    if (saved && typeof saved.name === 'string' && Array.isArray(saved.walls) && Array.isArray(saved.openings)) return saved;
+    if (saved && typeof saved.name === 'string' && Array.isArray(saved.walls) && Array.isArray(saved.openings)) {
+      // Upgrade only the untouched example that the previous release saved on first visit.
+      if (saved.example === true && JSON.stringify(saved) === JSON.stringify(legacyExampleProject())) return defaultProject();
+      return saved;
+    }
   } catch {}
-  return exampleProject();
+  return defaultProject();
 }
 
 function persist() {
@@ -58,7 +63,10 @@ function commit(change, { structure = false, update = true } = {}) {
   if (past.length > 100) past.shift();
   future.length = 0;
   change();
-  if (structure) project.example = false;
+  if (structure) {
+    delete project.template;
+    delete project.example;
+  }
   persist();
   if (update) refresh();
 }
@@ -77,7 +85,7 @@ const world = p => ({ x: camera.x + (p.x - size.width / 2) / camera.scale, y: ca
 
 function fitPlan() {
   const box = bounds(project);
-  const scale = clamp(Math.min((size.width - 88) / box.width, (size.height - 105) / box.depth), 10, 135);
+  const scale = clamp(Math.min((size.width - 64) / box.width, (size.height - 82) / box.depth), 10, 135);
   camera = { x: box.x + box.width / 2, y: box.y + box.depth / 2, scale, base: scale };
   fitted = true;
   draw();
@@ -128,24 +136,17 @@ function grid() {
   }
 }
 
-function paintRooms() {
-  if (!project.example) return;
-  for (const [i, room] of demoRooms.entries()) {
-    const [x,y,r,b] = room.edge;
-    const a = screen({ x,y });
-    const end = screen({ x:r,y:b });
-    context.fillStyle = ['#dcece0','#e9efe2','#e5efe1','#e0ece5'][i];
-    context.fillRect(a.x, a.y, end.x-a.x, end.y-a.y);
-    if (camera.scale < 30) continue;
-    const label = screen(room);
-    context.textAlign = 'center';
-    context.fillStyle = '#2d5044';
-    context.font = '700 15px DM Sans, sans-serif';
-    context.fillText(room.name, label.x, label.y);
-    context.font = '13px DM Sans, sans-serif';
-    context.fillStyle = '#557167';
-    context.fillText(unit.format((r-x)*(b-y)) + ' m²', label.x, label.y+19);
-  }
+function paintFootprint() {
+  if (project.template !== 'house') return;
+  context.beginPath();
+  houseOutline.forEach(([x,y],index) => {
+    const point = screen({x,y});
+    if (index === 0) context.moveTo(point.x,point.y);
+    else context.lineTo(point.x,point.y);
+  });
+  context.closePath();
+  context.fillStyle = '#e9f1e9';
+  context.fill();
 }
 
 function inWallFrame(wall, paint) {
@@ -162,8 +163,17 @@ function paintWall(wall, ghost = false) {
     const active = selected?.id === wall.id;
     thickness = Math.max(3, thickness);
     context.fillStyle = ghost ? '#52ac8a96' : active ? '#21866a' : '#25493e';
-    context.fillRect(0, -thickness/2, width, thickness);
+    context.fillRect(-thickness/2, -thickness/2, width+thickness, thickness);
   });
+}
+
+function paintSwing(hingeX, width, hinge, side) {
+  const startAngle = hinge === 'start' ? 0 : Math.PI;
+  const endAngle = side * Math.PI / 2;
+  stroke(hingeX, 0, hingeX, side * width);
+  context.beginPath();
+  context.arc(hingeX, 0, width, startAngle, endAngle, (hinge === 'start') === (side < 0));
+  context.stroke();
 }
 
 function paintOpening(opening, ghost = false) {
@@ -187,15 +197,13 @@ function paintOpening(opening, ghost = false) {
       stroke(x, -y, x+width, -y);
       stroke(x, y, x+width, y);
       stroke(x, 0, x+width, 0);
+      if (opening.casement) {
+        paintSwing(x + width*.05, width*.45, 'start', opening.side);
+        paintSwing(x + width*.95, width*.45, 'end', opening.side);
+      }
       return;
     }
-    const hingeX = opening.hinge === 'start' ? x : x + width;
-    const startAngle = opening.hinge === 'start' ? 0 : Math.PI;
-    const endAngle = opening.side * Math.PI / 2;
-    stroke(hingeX, 0, hingeX, opening.side * width);
-    context.beginPath();
-    context.arc(hingeX, 0, width, startAngle, endAngle, (opening.hinge === 'start') === (opening.side < 0));
-    context.stroke();
+    paintSwing(opening.hinge === 'start' ? x : x + width, width, opening.hinge, opening.side);
   });
 }
 
@@ -225,16 +233,17 @@ function wallMeasure(wall, offset = 25) {
 function draw() {
   context.clearRect(0,0,size.width,size.height);
   grid();
-  paintRooms();
+  paintFootprint();
   project.walls.forEach(wall => paintWall(wall));
   project.openings.forEach(opening => paintOpening(opening));
   const selectedWall = project.walls.find(wall => wall.id === selected?.id);
   if (selectedWall) {
     wallMeasure(selectedWall);
     for (const point of [selectedWall.a, selectedWall.b]) dot(point, '#23775f');
-  } else if (project.example) {
-    wallMeasure({ a:{x:-5,y:-3.5}, b:{x:5,y:-3.5} }, 28);
-    wallMeasure({ a:{x:-5,y:3.6}, b:{x:-5,y:-3.5} }, 26);
+  } else if (project.template === 'house') {
+    const box = bounds(project);
+    wallMeasure({a:{x:box.x,y:box.y},b:{x:box.x+box.width,y:box.y}},24);
+    wallMeasure({a:{x:box.x,y:box.y+box.depth},b:{x:box.x,y:box.y}},23);
   }
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
@@ -385,13 +394,12 @@ function inspector() {
   const item = selected?.type==='wall'
     ? project.walls.find(wall => wall.id===selected.id)
     : project.openings.find(opening => opening.id===selected?.id);
+  $('inspector').hidden = !item || view !== 'plan';
   if (!item) {
-    const doors = project.openings.filter(opening => opening.type==='door').length;
-    panel.innerHTML = '<dl class="counts"><div><dt>Paredes</dt><dd>'+project.walls.length+'</dd></div><div><dt>Portas</dt><dd>'+doors+'</dd></div><div><dt>Janelas</dt><dd>'+(project.openings.length-doors)+'</dd></div></dl><p class="muted">'+
-      (view==='plan' ? 'Selecione um elemento na planta para editar suas medidas.' : 'Volte à planta 2D para editar os elementos.')+'</p>';
+    panel.replaceChildren();
     return;
   }
-  const input = (name,label,value,min,max) => '<label>'+label+'<div class="measure"><input type="number" data-field="'+name+'" min="'+min+'" max="'+max+'" step=".01" value="'+Math.round(value*100)/100+'"><span>m</span></div></label>';
+  const input = (name,label,value,min,max) => '<label>'+label+'<div class="measure"><input type="number" data-field="'+name+'" min="'+min+'" max="'+max+'" step=".001" value="'+Math.round(value*1000)/1000+'"><span>m</span></div></label>';
   const dropdown = (name,label,value,options) => '<label>'+label+'<select data-field="'+name+'">'+options.map(([id,text]) => '<option value="'+id+'"'+(String(value)===String(id)?' selected':'')+'>'+text+'</option>').join('')+'</select></label>';
   const isWall = selected.type==='wall';
   const fields = isWall
@@ -471,7 +479,6 @@ function refresh() {
   $('project-count').textContent=project.walls.length+' '+(project.walls.length===1?'parede':'paredes')+' · '+
     project.openings.length+' '+(project.openings.length===1?'abertura':'aberturas');
   $('mode').textContent=isPlan ? tools[tool][0] : 'Navegação 3D';
-  $('view-title').textContent=isPlan?'Planta baixa':'Vista 3D';
   setHint(isPlan ? tools[tool][1] : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
   $('model-button').setAttribute('aria-pressed',String(!isPlan));
@@ -544,13 +551,17 @@ $('project-name').onchange=event => {
   refresh();
 };
 document.querySelectorAll('[data-tool]').forEach(button => { button.onclick=() => setTool(button.dataset.tool); });
+$('close-properties').onclick=() => { selected=null; refresh(); };
 $('new').onclick=() => { $('new-dialog').returnValue=''; $('new-dialog').showModal(); };
 $('new-dialog').onclose=() => {
-  if ($('new-dialog').returnValue!=='new') return;
+  const choice=$('new-dialog').returnValue;
+  if (choice!=='blank' && choice!=='template') return;
   selected=start=hover=preview=null;
-  commit(() => { project={name:'Sem título',walls:[],openings:[],example:false}; });
+  commit(() => {
+    project=choice==='template' ? defaultProject() : {name:'Sem título',walls:[],openings:[]};
+  });
   if (view!=='plan') setView('plan');
-  setTool('wall');
+  setTool(choice==='template' ? 'select' : 'wall');
   fitPlan();
 };
 document.addEventListener('keydown',event => {
