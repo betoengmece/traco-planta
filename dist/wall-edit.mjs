@@ -15,7 +15,7 @@ function closestPoint(target,points,radius) {
     distance(target,point) <= (closest ? distance(target,closest) : radius) ? point : closest,null);
 }
 
-export function snapWallPoint(raw,start,walls,{scale,magnetism,orthogonal}) {
+export function snapWallPoint(raw,start,walls,{scale,magnetism,orthogonal,fixedLength=null}) {
   const radius = 9 / scale;
   const points = magnetism ? endpoints(walls) : [];
   if (!start) {
@@ -24,7 +24,7 @@ export function snapWallPoint(raw,start,walls,{scale,magnetism,orthogonal}) {
     const hit = nearestWall(raw,walls,radius*.7);
     return endpoint ?? (hit ? pointAt(hit.wall,hit.t) : {x:roundLength(raw.x),y:roundLength(raw.y)});
   }
-  if (!magnetism && !orthogonal) return raw;
+  if (!magnetism && !orthogonal && fixedLength===null) return raw;
 
   const vector = subtract(raw,start);
   const rawLength = Math.hypot(vector.x,vector.y);
@@ -35,14 +35,20 @@ export function snapWallPoint(raw,start,walls,{scale,magnetism,orthogonal}) {
     .map(radians => ({x:Math.cos(radians),y:Math.sin(radians)}))
     .sort((a,b) => Math.abs(cross(a,vector))-Math.abs(cross(b,vector)));
   const axis = axes[0];
-  const align = orthogonal || Math.abs(cross(axis,vector)) / rawLength <= Math.sin(Math.PI/10);
+  const align = orthogonal || (magnetism && Math.abs(cross(axis,vector)) / rawLength <= Math.sin(Math.PI/10));
   const compatible = align && orthogonal ? points.filter(point => Math.abs(cross(axis,subtract(point,start))) < epsilon) : points;
   const nearest = closestPoint(raw,compatible,radius);
-  if (nearest && distance(start,nearest) >= minimumWallLength) return nearest;
+  if (nearest) {
+    const gap=distance(start,nearest);
+    if (gap>=minimumWallLength && (fixedLength===null || Math.abs(gap-fixedLength)<epsilon)) return nearest;
+  }
 
   const direction = align ? axis : {x:vector.x/rawLength,y:vector.y/rawLength};
   const signedLength = dot(vector,direction);
-  return along(start,direction,magnetism ? roundLength(signedLength) : signedLength);
+  const chosenLength = fixedLength===null
+    ? (magnetism ? roundLength(signedLength) : signedLength)
+    : Math.sign(signedLength)*fixedLength;
+  return along(start,direction,chosenLength);
 }
 
 export function stretchPoint(wall,edge,raw,walls,{scale,magnetism}) {

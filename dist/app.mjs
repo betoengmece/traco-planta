@@ -27,6 +27,14 @@ let windowTypeId = 'sliding';
 let itemsOpen = false;
 let itemsTab = 'placed';
 const expandedGroups = new Set();
+const placementTools = ['wall','door','window'];
+const placementDefaults = {
+  wall:{length:null,thickness:.15,height:2.7},
+  door:{width:.86,height:2.1,sill:0,hinge:'start',side:1}
+};
+const hingeOptions = [['start','Lado 1'],['end','Lado 2']];
+const swingOptions = [[1,'Um lado da parede'],[-1,'Outro lado da parede']];
+let placementPropertiesOpen = false;
 let tool = 'select';
 let view = 'plan';
 let selected = null;
@@ -261,7 +269,7 @@ function draw() {
   }
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
-      const ghost = { a:start, b:hover, thickness:.15 };
+      const ghost = { a:start, b:hover, thickness:placementDefaults.wall.thickness };
       paintWall(ghost, true);
       wallMeasure(ghost, 20);
     }
@@ -287,7 +295,9 @@ function dot(point, color) {
 }
 
 function snap(point, orthogonal) {
-  return snapWallPoint(point,start,project.walls,{scale:camera.scale,magnetism,orthogonal});
+  const fixedLength=placementDefaults.wall.length;
+  if (fixedLength!==null && start && distance(start,point)<6/camera.scale) return start;
+  return snapWallPoint(point,start,project.walls,{scale:camera.scale,magnetism,orthogonal,fixedLength});
 }
 
 function endpointAt(position) {
@@ -300,9 +310,9 @@ function endpointAt(position) {
 
 function openingAt(point,type) {
   const windowType = type==='window' ? activeWindowType() : null;
-  const {width,height,sill} = windowType ?? {width:.86,height:2.1,sill:0};
-  const draft = {type,width,height,sill,hinge:'start',side:1};
-  if (windowType) Object.assign(draft,{typeId:windowType.id,casement:windowType.casement});
+  const draft = windowType
+    ? {type,typeId:windowType.id,casement:windowType.casement,width:windowType.width,height:windowType.height,sill:windowType.sill,hinge:'start',side:1}
+    : {type,...placementDefaults.door};
   return placeOpening(project,draft,point,{scale:camera.scale,magnetism});
 }
 
@@ -345,6 +355,11 @@ plan.addEventListener('pointerdown', event => {
     plan.style.cursor = 'grabbing';
     return;
   }
+  if (placementTools.includes(tool)) {
+    const active=document.activeElement;
+    if (active?.matches('#properties [data-field]')) active.blur();
+    if ($('properties').querySelector('[aria-invalid="true"]')) return;
+  }
   const pos = world(p);
   if (tool === 'select') {
     const endpoint=endpointAt(pos);
@@ -369,7 +384,8 @@ plan.addEventListener('pointerdown', event => {
     const point = snap(pos, event.shiftKey);
     if (!start) { start=point; hover=point; refresh(); return; }
     if (distance(start,point)<minimumWallLength-.00001) { setHint('Escolha um ponto a pelo menos 15 cm do início.'); return; }
-    const wall = {id:crypto.randomUUID(),a:start,b:point,thickness:.15,height:2.7};
+    const {thickness,height}=placementDefaults.wall;
+    const wall = {id:crypto.randomUUID(),a:start,b:point,thickness,height};
     const closes = project.walls.some(existing => distance(existing.a,point)<.001 || distance(existing.b,point)<.001);
     start = closes ? null : point;
     hover = point;
@@ -442,8 +458,10 @@ function cursor() { plan.style.cursor = tool==='pan' ? 'grab' : tool==='select' 
 function setHint(text) { $('hint').textContent=text; }
 function setTool(next) {
   if (view!=='plan') return;
+  if (next!==tool) start=null;
   tool=next;
-  start=hover=preview=null;
+  placementPropertiesOpen=placementTools.includes(next);
+  hover=preview=null;
   if (next!=='select') selected=null;
   cursor();
   refresh();
@@ -518,7 +536,7 @@ function renderItems() {
         (toolName!=='window' || activeWindowType().id===typeId)));
       list.append(row);
     }
-    addCatalogRow('Porta simples','0,86 × 2,1 m','door');
+    addCatalogRow('Porta simples',sizeLabel(placementDefaults.door),'door');
     for (const type of project.windowTypes) addCatalogRow(type.name,sizeLabel(type),'window',type.id);
   } else {
     function group(key,name,type,entries) {
@@ -569,42 +587,151 @@ function renderItems() {
   $('items').scrollTop=scrollTop;
 }
 
+function numberField(name,label,value,min,max,optional=false) {
+  const current=value===null ? '' : String(Math.round(value*1000)/1000);
+  return '<label>'+label+'<div class="measure"><input type="number" data-field="'+name+'" min="'+min+
+    '" max="'+max+'" step=".001" value="'+current+'"'+(optional?' placeholder="Livre"':' required')+'><span>m</span></div></label>';
+}
+
+function selectField(name,label,value,options) {
+  const select=document.createElement('select');
+  select.dataset.field=name;
+  for (const [id,text] of options) select.add(new Option(text,id,String(value)===String(id)));
+  return '<label>'+label+select.outerHTML+'</label>';
+}
+
+function openingFields(item,type) {
+  return numberField('width','Largura',item.width,.2,8)+numberField('height','Altura',item.height,.2,8)+
+    (type==='window' ? numberField('sill','Peitoril',item.sill,0,8) :
+      selectField('hinge','Dobradiça',item.hinge,hingeOptions)+selectField('side','Sentido da abertura',item.side,swingOptions));
+}
+
+function renderProperties(panel, type, label, fields, note, onChange, removable=false) {
+  panel.innerHTML='<div class="property-kind"><i>'+icon(type)+'</i><span></span></div><div class="fields">'+fields+
+    '</div><p class="property-feedback" role="alert" hidden></p>'+
+    (removable?'<button id="remove-selection" class="remove"><i>'+icon('trash')+'</i> Excluir</button>':'');
+  panel.querySelector('.property-kind span').textContent=label;
+  if (note) {
+    const paragraph=document.createElement('p');
+    paragraph.className='type-note';
+    paragraph.textContent=note;
+    panel.querySelector('.property-feedback').before(paragraph);
+  }
+  panel.querySelectorAll('[data-field]').forEach(element => {
+    element.addEventListener('change',() => onChange(element));
+    element.addEventListener('keydown',event => {
+      if (event.key==='Enter' && element.matches('input')) element.blur();
+    });
+  });
+  if (removable) $('remove-selection').onclick=remove;
+}
+
 function inspector() {
-  const panel = $('properties');
-  const item = selected?.type==='wall'
+  const panel=$('properties');
+  if (view==='plan' && placementTools.includes(tool)) {
+    $('inspector').hidden=!placementPropertiesOpen;
+    if (!placementPropertiesOpen) {
+      panel.replaceChildren();
+      return;
+    }
+    $('inspector-title').textContent='Antes de colocar';
+    if (tool==='wall') {
+      const {length:fixed,thickness,height}=placementDefaults.wall;
+      const fields=numberField('length','Comprimento fixo',fixed,.15,150,true)+
+        numberField('thickness','Espessura',thickness,.05,1)+numberField('height','Altura',height,.5,12);
+      renderProperties(panel,'wall','Parede',fields,'Deixe o comprimento vazio para desenhá-lo livremente.',applyPlacementField);
+    } else if (tool==='door') {
+      renderProperties(panel,'door','Porta',openingFields(placementDefaults.door,'door'),'',applyPlacementField);
+    } else {
+      const type=activeWindowType();
+      const fields=selectField('typeId','Tipo de janela',type.id,project.windowTypes.map(item => [item.id,item.name]))+
+        openingFields(type,'window');
+      renderProperties(panel,'window','Janela',fields,'As medidas valem para todas as janelas deste tipo.',applyPlacementField);
+    }
+    return;
+  }
+  const item=selected?.type==='wall'
     ? project.walls.find(wall => wall.id===selected.id)
     : project.openings.find(opening => opening.id===selected?.id);
-  $('inspector').hidden = !item || view !== 'plan';
-  if (!item) {
+  $('inspector').hidden=!item || view!=='plan';
+  if (!item || view!=='plan') {
     panel.replaceChildren();
     return;
   }
-  const input = (name,label,value,min,max) => '<label>'+label+'<div class="measure"><input type="number" data-field="'+name+'" min="'+min+'" max="'+max+'" step=".001" value="'+Math.round(value*1000)/1000+'"><span>m</span></div></label>';
-  const dropdown = (name,label,value,options) => '<label>'+label+'<select data-field="'+name+'">'+options.map(([id,text]) => '<option value="'+id+'"'+(String(value)===String(id)?' selected':'')+'>'+text+'</option>').join('')+'</select></label>';
-  const isWall = selected.type==='wall';
-  const fields = isWall
-    ? input('length','Comprimento',length(item),.15,150) + input('thickness','Espessura',item.thickness,.05,1) + input('height','Altura',item.height,.5,12)
-    : input('width','Largura',item.width,.2,8) + input('height','Altura',item.height,.2,8) +
-      (item.type==='window' ? input('sill','Peitoril',item.sill,0,8)
-        : dropdown('hinge','Dobradiça',item.hinge,[['start','Lado 1'],['end','Lado 2']]) +
-          dropdown('side','Sentido da abertura',item.side,[[1,'Um lado da parede'],[-1,'Outro lado da parede']]));
-  panel.innerHTML = '<div class="property-kind"><i>'+icon(selected.type)+'</i><span></span></div><div class="fields">'+fields+
-    '</div><p class="property-feedback" role="alert" hidden></p><button id="remove-selection" class="remove"><i>'+icon('trash')+'</i> Excluir</button>';
-  panel.querySelector('.property-kind span').textContent = findWindowType(item)?.name ?? shortNames[selected.type];
-  if (item.type==='window') {
-    const note=document.createElement('p');
-    note.className='type-note';
-    const count=project.openings.filter(opening => opening.typeId===item.typeId).length;
-    note.textContent=count===1 ? 'Novas janelas deste tipo usarão estas medidas.' : 'As medidas valem para as '+count+' janelas deste tipo.';
-    panel.querySelector('.property-feedback').before(note);
+  $('inspector-title').textContent='Propriedades';
+  const fields=selected.type==='wall'
+    ? numberField('length','Comprimento',length(item),.15,150)+numberField('thickness','Espessura',item.thickness,.05,1)+numberField('height','Altura',item.height,.5,12)
+    : openingFields(item,selected.type);
+  const count=item.type==='window' ? project.openings.filter(opening => opening.typeId===item.typeId).length : 0;
+  const note=count===1 ? 'Novas janelas deste tipo usarão estas medidas.' :
+    count>1 ? 'As medidas valem para as '+count+' janelas deste tipo.' : '';
+  renderProperties(panel,selected.type,findWindowType(item)?.name ?? shortNames[selected.type],fields,note,
+    element => applyField(item,element),true);
+}
+
+function showPropertyError(element,message) {
+  const field=$('properties').querySelector('.property-feedback');
+  if (!field) return;
+  if (element) {
+    if (message) {
+      element.setAttribute('aria-invalid','true');
+      element.dataset.error=message;
+    } else {
+      element.removeAttribute('aria-invalid');
+      delete element.dataset.error;
+    }
   }
-  panel.querySelectorAll('[data-field]').forEach(element => {
-    element.addEventListener('change', () => applyField(item,element));
-    element.addEventListener('keydown', event => {
-      if(event.key==='Enter') element.blur();
-    });
-  });
-  $('remove-selection').onclick = remove;
+  field.textContent=message || $('properties').querySelector('[aria-invalid="true"]')?.dataset.error || '';
+  field.hidden=!field.textContent;
+}
+
+function applyPlacementField(element) {
+  const name=element.dataset.field;
+  if (name==='typeId') {
+    windowTypeId=element.value;
+    preview=null;
+    refresh();
+    return;
+  }
+  const optional=tool==='wall' && name==='length';
+  const value=optional && element.value==='' ? null : name==='hinge' ? element.value : Number(element.value);
+  if (!element.checkValidity() || (value!==null && name!=='hinge' && !Number.isFinite(value))) {
+    showPropertyError(element,'Digite uma medida válida.');
+    return;
+  }
+  if (tool==='window') {
+    const type=activeWindowType();
+    const change=resizeWindowType(project,type.id,name,value);
+    if (!change) {
+      showPropertyError(element,'Essa medida não cabe em todas as janelas deste tipo.');
+      return;
+    }
+    if (type[name]!==value) saveWindowType(change,false);
+  } else {
+    placementDefaults[tool][name]=value;
+    if (tool==='wall' && name==='length') {
+      const fixedHint=start ? 'Clique na direção da parede para aplicar o comprimento fixo.' : 'Clique no ponto inicial da parede.';
+      setHint(value===null ? tools.wall[1] : fixedHint);
+    }
+  }
+  showPropertyError(element,'');
+  preview=hover=null;
+  draw();
+}
+
+function saveWindowType(change,refreshInspector) {
+  commit(() => {
+    project.openings=change.openings;
+    project.windowTypes=change.windowTypes;
+  },{update:refreshInspector});
+  if (!refreshInspector) {
+    $('undo').disabled=false;
+    $('redo').disabled=true;
+    renderItems();
+  }
+  const message=change.count===0 ? 'Medida salva para as próximas janelas deste tipo.' :
+    change.count===1 ? 'Medida da janela atualizada.' : 'Medida atualizada em '+change.count+' janelas.';
+  setHint(message);
 }
 
 function applyField(item, element) {
@@ -644,16 +771,10 @@ function applyField(item, element) {
     const change=resizeWindowType(project,item.typeId,name,value);
     if (!change) {
       refresh();
-      const feedback=$('properties').querySelector('.property-feedback');
-      feedback.textContent='Essa medida não cabe em todas as janelas deste tipo.';
-      feedback.hidden=false;
+      showPropertyError(null,'Essa medida não cabe em todas as janelas deste tipo.');
       return;
     }
-    commit(() => {
-      project.openings=change.openings;
-      project.windowTypes=change.windowTypes;
-    });
-    setHint(change.count===1 ? 'Medida da janela atualizada.' : 'Medida atualizada em '+change.count+' janelas.');
+    saveWindowType(change,true);
     return;
   }
   const update = {...item,[name]:value};
@@ -684,6 +805,8 @@ function refresh() {
   $('mode').textContent=isPlan ? tools[tool][0] : 'Navegação 3D';
   let hint=tools[tool][1];
   if (tool==='window') hint=activeWindowType().name+' · clique em uma parede.';
+  if (tool==='wall' && placementDefaults.wall.length!==null)
+    hint=start ? 'Clique na direção da parede para aplicar o comprimento fixo.' : 'Clique no ponto inicial da parede.';
   if (tool==='select' && selected?.type==='wall') hint='Arraste uma ponta para esticar a parede no mesmo ângulo.';
   if (tool==='select' && selected && selected.type!=='wall') hint='Arraste o item para outro trecho de parede.';
   setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
@@ -762,7 +885,11 @@ $('project-name').onchange=event => {
   refresh();
 };
 document.querySelectorAll('[data-tool]').forEach(button => { button.onclick=() => setTool(button.dataset.tool); });
-$('close-properties').onclick=() => { selected=null; refresh(); };
+$('close-properties').onclick=() => {
+  if (placementTools.includes(tool)) placementPropertiesOpen=false;
+  else selected=null;
+  refresh();
+};
 $('items-toggle').onclick=() => setItems(!itemsOpen);
 $('magnetism').onclick=() => {
   magnetism=!magnetism;
