@@ -2,6 +2,7 @@ import { bounds, changeWallThickness, clamp, distance, heading, interval, joined
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
+import { measurePoint, wallFaces } from './measure.mjs';
 import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
@@ -10,11 +11,13 @@ const stage = $('stage');
 const context = plan.getContext('2d');
 const storageKey = 'traco-planta-v1';
 const unit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
+const preciseUnit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 const tools = {
   select: ['Selecionar', 'Clique para selecionar. Shift + clique seleciona várias paredes.'],
   wall: ['Parede', 'Clique no início e depois no fim de cada parede. Esc encerra.'],
   door: ['Porta', 'Clique sobre uma parede para encaixar a porta.'],
   window: ['Janela', 'Clique sobre uma parede para encaixar a janela.'],
+  measure: ['Medir', 'Clique no primeiro ponto da medida.'],
   pan: ['Mover vista', 'Arraste para mover a planta. Role para ampliar ou reduzir.']
 };
 const messages = {
@@ -36,6 +39,10 @@ const hingeOptions = [['start','Lado 1'],['end','Lado 2']];
 const swingOptions = [[1,'Um lado da parede'],[-1,'Outro lado da parede']];
 let placementPropertiesOpen = false;
 let tool = 'select';
+let measureStart = null;
+let measureEnd = null;
+let measureHover = null;
+let measureFaces = [];
 let view = 'plan';
 let selected = null;
 const selectedWalls = new Set();
@@ -123,6 +130,8 @@ function history(from, to) {
   placementDefaults.wall.thicknessOverride=null;
   start=hover=preview=null;
   resetSelection();
+  resetMeasure();
+  if (tool==='measure') measureFaces=wallFaces(project.walls);
   persist();
   refresh();
 }
@@ -278,6 +287,74 @@ function wallMeasure(wall, offset = 25) {
   });
 }
 
+function measurementLabel(value) {
+  return value<1 ? unit.format(value*100)+' cm' : preciseUnit.format(value)+' m';
+}
+
+function drawMeasurement() {
+  const color='#1c7062';
+  if (!measureStart) {
+    if (measureHover) dot(measureHover,color);
+    return;
+  }
+  const end=measureEnd ?? measureHover;
+  if (end && distance(measureStart,end)>.00001) {
+    const first=screen(measureStart);
+    const last=screen(end);
+    const pixels=distance(first,last);
+    const label=measurementLabel(distance(measureStart,end));
+    context.save();
+    context.strokeStyle=color;
+    context.lineWidth=2;
+    if (!measureEnd) context.setLineDash([5,4]);
+    stroke(first.x,first.y,last.x,last.y);
+    context.setLineDash([]);
+    context.font='700 14px DM Sans, sans-serif';
+    context.textAlign='center';
+    context.textBaseline='middle';
+    const width=context.measureText(label).width+18;
+    const x=clamp((first.x+last.x)/2+19*(last.y-first.y)/pixels,width/2+5,size.width-width/2-5);
+    const y=clamp((first.y+last.y)/2-19*(last.x-first.x)/pixels,16,size.height-16);
+    context.fillStyle='#f8fcf9';
+    context.lineWidth=1;
+    context.beginPath();
+    context.roundRect(x-width/2,y-12,width,24,6);
+    context.fill();
+    context.stroke();
+    context.fillStyle=color;
+    context.fillText(label,x,y);
+    context.restore();
+    dot(end,color);
+  }
+  dot(measureStart,color);
+}
+
+function measurementTarget(position,orthogonal) {
+  const origin=measureEnd ? null : measureStart;
+  return measurePoint(position,origin,measureFaces,{scale:camera.scale,magnetism,orthogonal});
+}
+
+function measurementHint() {
+  if (measureEnd) return 'Distância de '+measurementLabel(distance(measureStart,measureEnd))+'. Clique para iniciar outra medida.';
+  if (measureStart) return 'Clique no ponto final. Use Shift para medir na horizontal ou vertical.';
+  return tools.measure[1];
+}
+
+function resetMeasure() { measureStart=measureEnd=measureHover=null; }
+
+function setMeasurementPoint(position,orthogonal) {
+  const point=measurementTarget(position,orthogonal);
+  if (measureStart && !measureEnd) {
+    if (distance(measureStart,point)>.00001) measureEnd=point;
+  } else {
+    measureStart=point;
+    measureEnd=null;
+  }
+  measureHover=null;
+  setHint(measurementHint());
+  draw();
+}
+
 function draw() {
   context.clearRect(0,0,size.width,size.height);
   grid();
@@ -308,6 +385,7 @@ function draw() {
     if (start) dot(start, '#238263');
   }
   if (preview) paintOpening(preview, true);
+  if (tool==='measure' && view==='plan') drawMeasurement();
   if (view === 'plan') $('zoom').value = Math.round(100 * camera.scale / camera.base) + '%';
   const scale = camera.scale >= 23 ? 1 : 5;
   $('scale-bar').lastChild.textContent = scale + ' m';
@@ -400,6 +478,10 @@ plan.addEventListener('pointerdown', event => {
   const pos = world(p);
   if (tool==='select') {
     selectOnPlan(event,p,pos);
+    return;
+  }
+  if (tool==='measure') {
+    setMeasurementPoint(pos,event.shiftKey);
     return;
   }
   if (tool === 'wall') {
@@ -496,6 +578,7 @@ plan.addEventListener('pointermove', event => {
     camera.y = dragging.y + (dragging.p.y-p.y)/camera.scale;
   } else {
     const pos = world(p);
+    if (tool==='measure') measureHover=measurementTarget(pos,event.shiftKey);
     if (tool==='select') {
       const hit=multiSelect ? hitWall(pos) : hitTest(pos);
       plan.style.cursor=hit || endpointAt(pos) ? 'grab' : 'default';
@@ -524,7 +607,7 @@ function endDrag(event) {
 }
 plan.addEventListener('pointerup',endDrag);
 plan.addEventListener('pointercancel',endDrag);
-plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !openingDrag && !wallGroupDrag) { hover=preview=null; draw(); } });
+plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !openingDrag && !wallGroupDrag) { hover=preview=measureHover=null; draw(); } });
 plan.addEventListener('wheel',event => { event.preventDefault(); zoomPlan(Math.exp(-event.deltaY*.001),coordinate(event)); },{passive:false});
 plan.addEventListener('contextmenu',event => event.preventDefault());
 
@@ -534,6 +617,8 @@ function setTool(next) {
   if (view!=='plan') return;
   if (next!==tool) {
     start=null;
+    resetMeasure();
+    if (next==='measure') measureFaces=wallFaces(project.walls);
     if (tool==='wall') placementDefaults.wall.thicknessOverride=null;
   }
   tool=next;
@@ -972,6 +1057,7 @@ function refresh() {
     project.openings.length+' '+(project.openings.length===1?'abertura':'aberturas');
   $('mode').textContent=isPlan ? tools[tool][0] : 'Navegação 3D';
   let hint=tools[tool][1];
+  if (tool==='measure') hint=measurementHint();
   if (tool==='window') hint=activeWindowType().name+' · clique em uma parede.';
   if (tool==='wall' && placementDefaults.wall.length!==null)
     hint=start ? 'Clique na direção da parede para aplicar o comprimento fixo.' : 'Clique no ponto inicial da parede.';
@@ -1068,7 +1154,8 @@ $('magnetism').onclick=() => {
   magnetism=!magnetism;
   hover=preview=null;
   refresh();
-  setHint(magnetism ? 'Magnetismo ligado. Comprimentos de 10 em 10 cm.' : 'Magnetismo desligado.');
+  if (tool==='measure') setHint(magnetism ? 'Magnetismo ligado para encaixar nas faces das paredes.' : 'Magnetismo desligado.');
+  else setHint(magnetism ? 'Magnetismo ligado. Comprimentos de 10 em 10 cm.' : 'Magnetismo desligado.');
 };
 $('close-items').onclick=() => { setItems(false); $('items-toggle').focus(); };
 $('placed-items').onclick=() => setItems(true,'placed');
@@ -1100,9 +1187,9 @@ document.addEventListener('keydown',event => {
   if (key==='i') { setItems(!itemsOpen); return; }
   if (view!=='plan') return;
   if (key==='g') { $('magnetism').click(); return; }
-  const shortcuts={v:'select',p:'wall',d:'door',j:'window',m:'pan'};
+  const shortcuts={v:'select',p:'wall',d:'door',j:'window',r:'measure',m:'pan'};
   if (shortcuts[key]) setTool(shortcuts[key]);
-  else if (key==='escape') { start=hover=preview=null; resetSelection(); cursor(); refresh(); }
+  else if (key==='escape') { start=hover=preview=null; resetSelection(); resetMeasure(); cursor(); refresh(); }
   else if (['delete','backspace'].includes(key) && selected) { event.preventDefault(); remove(); }
 });
 
