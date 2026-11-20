@@ -144,3 +144,5 @@ dialog form>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px}
 .item-tool button[aria-pressed=true]{background:var(--pale);color:#0e523d}
 @media(max-width:600px){.item-tool{display:flex;gap:3px}}
 @media(max-width:365px){.tool-list button,.item-tool button,.history button{width:30px}}
+
+.straighten{justify-self:start}

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { bounds, clamp, heading, interval, length } from './geometry.mjs';
+import { bounds, clamp, heading, interval, joinedWallCaps, length } from './geometry.mjs';
 import { houseOutline } from './template.mjs';
 
 export function createModel(host, onZoom) {
@@ -102,12 +102,13 @@ export function createModel(host, onZoom) {
     solid(group,hinge,(head-trim)/2,opening.side*leafWidth/2,leafDepth,head-trim,leafWidth,mats.door);
   }
 
-  function addWall(wall,openings) {
+  function addWall(wall,openings,walls) {
+    const caps=joinedWallCaps(wall,walls);
     const group=new THREE.Group();
     group.position.set(wall.a.x,0,wall.a.y);
     group.rotation.y=-heading(wall);
     assembly.add(group);
-    let position=-wall.thickness/2;
+    let position=-caps.a;
     for (const opening of openings.sort((a,b)=>a.t-b.t)) {
       const [start,end]=interval(opening,wall);
       fillWall(group,position,start,0,wall.height,wall.thickness);
@@ -116,13 +117,13 @@ export function createModel(host, onZoom) {
       addOpening(group,opening,wall,start,end);
       position=end;
     }
-    fillWall(group,position,length(wall)+wall.thickness/2,0,wall.height,wall.thickness);
+    fillWall(group,position,length(wall)+caps.b,0,wall.height,wall.thickness);
   }
 
   function setProject(project) {
     box=bounds(project);
     assembly.clear();
-    project.walls.forEach(wall => addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id)));
+    project.walls.forEach(wall => addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls));
     if (project.template === 'house') assembly.add(slab);
     const span=Math.max(box.width,box.depth);
     const cx=box.x+box.width/2;

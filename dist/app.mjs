@@ -1,8 +1,8 @@
-import { bounds, clamp, distance, heading, interval, legacyExampleProject, length, nearestWall, placeOpening, pointAt, validateOpening } from './geometry.mjs';
+import { bounds, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, nearestWall, placeOpening, pointAt, validateOpening } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
-import { minimumWallLength, moveWallEndpoint, snapWallPoint, stretchPoint } from './wall-edit.mjs';
+import { minimumWallLength, moveWallEndpoint, snapWallPoint, straightenedEnd, stretchPoint } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
 const plan = $('plan');
@@ -175,12 +175,13 @@ function inWallFrame(wall, paint) {
   context.restore();
 }
 
-function paintWall(wall, ghost = false) {
+function paintWall(wall, walls, ghost = false) {
+  const caps=joinedWallCaps(wall,walls);
   inWallFrame(wall, (width, thickness) => {
     const active = selected?.id === wall.id;
     thickness = Math.max(3, thickness);
     context.fillStyle = ghost ? '#52ac8a96' : active ? '#21866a' : '#25493e';
-    context.fillRect(-thickness/2, -thickness/2, width+thickness, thickness);
+    context.fillRect(-caps.a*camera.scale,-thickness/2,width+(caps.a+caps.b)*camera.scale,thickness);
   });
 }
 
@@ -252,7 +253,7 @@ function draw() {
   grid();
   paintFootprint();
   const drawing = wallDrag?.change || project;
-  drawing.walls.forEach(wall => paintWall(wall));
+  drawing.walls.forEach(wall => paintWall(wall,drawing.walls));
   drawing.openings.forEach(opening => {
     const position = openingDrag?.next?.id===opening.id ? openingDrag.next : opening;
     paintOpening(position,false,drawing.walls);
@@ -269,8 +270,8 @@ function draw() {
   }
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
-      const ghost = { a:start, b:hover, thickness:placementDefaults.wall.thickness };
-      paintWall(ghost, true);
+      const ghost = { id:'preview-wall',a:start,b:hover,thickness:placementDefaults.wall.thickness };
+      paintWall(ghost,drawing.walls,true);
       wallMeasure(ghost, 20);
     }
     dot(hover, '#238263');
@@ -667,6 +668,21 @@ function inspector() {
     count>1 ? 'As medidas valem para as '+count+' janelas deste tipo.' : '';
   renderProperties(panel,selected.type,findWindowType(item)?.name ?? shortNames[selected.type],fields,note,
     element => applyField(item,element),true);
+  if (selected.type==='wall' && straightenedEnd(item)) {
+    const button=document.createElement('button');
+    button.className='plain straighten';
+    button.textContent='Endireitar parede';
+    button.onclick=() => {
+      const change=moveWallEndpoint(project,item,'b',straightenedEnd(item));
+      if (!change) {
+        showPropertyError(null,'A parede não pode ser endireitada sem afetar as aberturas ligadas.');
+        return;
+      }
+      commit(() => { project.walls=change.walls; project.openings=change.openings; },{structure:true});
+      setHint('Parede alinhada com a grade.');
+    };
+    panel.querySelector('#remove-selection').before(button);
+  }
 }
 
 function showPropertyError(element,message) {

@@ -33,6 +33,29 @@ export function validateOpening(opening, wall, siblings) {
     });
 }
 
+export function joinedWallCaps(wall,walls) {
+  const angle=heading(wall);
+  function cap(edge,inside) {
+    let extension=0;
+    for (const other of walls) {
+      if (other.id===wall.id) continue;
+      const intersection=projectToWall(wall[edge],other);
+      if (intersection.distance>.00001) continue;
+      const sine=Math.abs(Math.sin(heading(other)-angle));
+      if (sine<.00001) {
+        const outgoingX=wall[edge].x-wall[inside].x;
+        const outgoingY=wall[edge].y-wall[inside].y;
+        if ([other.a,other.b].some(point =>
+          (point.x-wall[edge].x)*outgoingX+(point.y-wall[edge].y)*outgoingY>.00001)) return 0;
+      } else {
+        extension=Math.max(extension,other.thickness/(2*Math.max(.5,sine)));
+      }
+    }
+    return extension;
+  }
+  return {a:cap('a','b'),b:cap('b','a')};
+}
+
 export function placeOpening(project,opening,position,{scale,magnetism}) {
   const hit = nearestWall(position,project.walls,13/scale);
   if (!hit) return null;

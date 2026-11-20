@@ -1,4 +1,4 @@
-import { distance, heading, length, nearestWall, pointAt, validateOpening } from './geometry.mjs';
+import { distance, heading, length, nearestWall, pointAt, projectToWall, validateOpening } from './geometry.mjs';
 
 const gridStep = .1;
 export const minimumWallLength = .15;
@@ -15,40 +15,69 @@ function closestPoint(target,points,radius) {
     distance(target,point) <= (closest ? distance(target,closest) : radius) ? point : closest,null);
 }
 
+function wallIntersection(origin,axis,wall) {
+  const segment=subtract(wall.b,wall.a);
+  const relative=subtract(wall.a,origin);
+  const divider=cross(axis,segment);
+  if (Math.abs(divider)<epsilon) return null;
+  const offset=cross(relative,axis)/divider;
+  return offset>=-epsilon && offset<=1+epsilon ? cross(relative,segment)/divider : null;
+}
+
 export function snapWallPoint(raw,start,walls,{scale,magnetism,orthogonal,fixedLength=null}) {
-  const radius = 9 / scale;
-  const points = magnetism ? endpoints(walls) : [];
+  const radius=9/scale;
+  const points=magnetism ? endpoints(walls) : [];
   if (!start) {
     if (!magnetism) return raw;
-    const endpoint = closestPoint(raw,points,radius);
-    const hit = nearestWall(raw,walls,radius*.7);
-    return endpoint ?? (hit ? pointAt(hit.wall,hit.t) : {x:roundLength(raw.x),y:roundLength(raw.y)});
+    const endpoint=closestPoint(raw,points,radius);
+    if (endpoint) return endpoint;
+    const hit=walls.map(wall=>projectToWall(raw,wall))
+      .filter(({wall,distance:gap})=>gap<=Math.max(radius*.7,wall.thickness/2+4/scale))
+      .sort((a,b)=>a.distance-b.distance)[0];
+    return hit ? pointAt(hit.wall,hit.t) : {x:roundLength(raw.x),y:roundLength(raw.y)};
   }
   if (!magnetism && !orthogonal && fixedLength===null) return raw;
 
-  const vector = subtract(raw,start);
-  const rawLength = Math.hypot(vector.x,vector.y);
-  if (rawLength < epsilon) return start;
-  const adjacent = nearestWall(start,walls,epsilon)?.wall;
-  const angle = adjacent ? heading(adjacent) : 0;
-  const axes = [0, Math.PI/2, angle, angle+Math.PI/2]
-    .map(radians => ({x:Math.cos(radians),y:Math.sin(radians)}))
-    .sort((a,b) => Math.abs(cross(a,vector))-Math.abs(cross(b,vector)));
-  const axis = axes[0];
-  const align = orthogonal || (magnetism && Math.abs(cross(axis,vector)) / rawLength <= Math.sin(Math.PI/10));
-  const compatible = align && orthogonal ? points.filter(point => Math.abs(cross(axis,subtract(point,start))) < epsilon) : points;
-  const nearest = closestPoint(raw,compatible,radius);
-  if (nearest) {
-    const gap=distance(start,nearest);
-    if (gap>=minimumWallLength && (fixedLength===null || Math.abs(gap-fixedLength)<epsilon)) return nearest;
-  }
+  const vector=subtract(raw,start);
+  const rawLength=Math.hypot(vector.x,vector.y);
+  if (rawLength<epsilon) return start;
+  const adjacent=nearestWall(start,walls,epsilon)?.wall;
+  const angle=adjacent ? heading(adjacent) : 0;
+  const directions=[0,Math.PI/2];
+  if (Math.abs(Math.sin(2*angle))>Math.sin(Math.PI/30)) directions.push(angle,angle+Math.PI/2);
+  const axes=directions.map(radians=>({x:Math.cos(radians),y:Math.sin(radians)}))
+    .sort((a,b)=>Math.abs(cross(a,vector))-Math.abs(cross(b,vector)));
+  const axis=axes[0];
+  const align=orthogonal || (magnetism && Math.abs(cross(axis,vector))/rawLength<=Math.sin(Math.PI/10));
+  const compatible=points.filter(point=>{
+    const offset=subtract(point,start);
+    const gap=Math.hypot(offset.x,offset.y);
+    return gap>=minimumWallLength && (!align || Math.abs(cross(axis,offset))<epsilon) &&
+      (fixedLength===null || Math.abs(gap-fixedLength)<epsilon);
+  });
+  const nearest=closestPoint(raw,compatible,radius);
+  if (nearest) return nearest;
 
-  const direction = align ? axis : {x:vector.x/rawLength,y:vector.y/rawLength};
-  const signedLength = dot(vector,direction);
-  const chosenLength = fixedLength===null
+  const direction=align ? axis : {x:vector.x/rawLength,y:vector.y/rawLength};
+  const signedLength=dot(vector,direction);
+  if (magnetism && fixedLength===null) {
+    const intersections=walls.map(wall=>wallIntersection(start,direction,wall))
+      .filter(value=>value!==null && Math.abs(value)>=minimumWallLength && Math.sign(value)===Math.sign(signedLength))
+      .map(value=>along(start,direction,value));
+    const crossing=closestPoint(raw,intersections,radius);
+    if (crossing) return crossing;
+  }
+  const chosenLength=fixedLength===null
     ? (magnetism ? roundLength(signedLength) : signedLength)
     : Math.sign(signedLength)*fixedLength;
   return along(start,direction,chosenLength);
+}
+
+export function straightenedEnd(wall) {
+  const dx=wall.b.x-wall.a.x;
+  const dy=wall.b.y-wall.a.y;
+  if (Math.abs(dx)<epsilon || Math.abs(dy)<epsilon) return null;
+  return Math.abs(dx)>=Math.abs(dy) ? {x:wall.b.x,y:wall.a.y} : {x:wall.a.x,y:wall.b.y};
 }
 
 export function stretchPoint(wall,edge,raw,walls,{scale,magnetism}) {
@@ -81,8 +110,8 @@ export function stretchPoint(wall,edge,raw,walls,{scale,magnetism}) {
       }
       continue;
     }
-    const offset = cross(relative,axis) / divider;
-    if (offset >= -epsilon && offset <= 1+epsilon) check(cross(relative,segment)/divider);
+    const crossing=wallIntersection(fixed,axis,other);
+    if (crossing!==null) check(crossing);
   }
   return along(fixed,axis,Math.max(minimumWallLength,target ?? roundLength(projected)));
 }
