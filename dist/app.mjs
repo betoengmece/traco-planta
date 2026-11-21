@@ -45,6 +45,7 @@ let measureEnd = null;
 let measureHover = null;
 let measureFaces = [];
 let view = 'plan';
+let showOriginal = false;
 let selected = null;
 const selectedWalls = new Set();
 let multiSelect = false;
@@ -172,7 +173,9 @@ const screen = p => ({ x: size.width / 2 + (p.x - camera.x) * camera.scale, y: s
 const world = p => ({ x: camera.x + (p.x - size.width / 2) / camera.scale, y: camera.y + (p.y - size.height / 2) / camera.scale });
 
 function fitPlan() {
-  const box = bounds(project);
+  const originals=project.original?.walls ?? [];
+  const walls=view==='original' ? originals : showOriginal ? [...project.walls,...originals] : project.walls;
+  const box = bounds({walls});
   const scale = clamp(Math.min((size.width - 64) / box.width, (size.height - 82) / box.depth), 10, 135);
   camera = { x: box.x + box.width / 2, y: box.y + box.depth / 2, scale, base: scale };
   fitted = true;
@@ -246,12 +249,12 @@ function inWallFrame(wall, paint) {
   context.restore();
 }
 
-function paintWall(wall, walls, ghost = false) {
+function paintWall(wall, walls, ghost = false, reference = false) {
   const caps=joinedWallCaps(wall,walls);
   inWallFrame(wall, (width, thickness) => {
-    const active = selectedWalls.has(wall.id);
+    const active = !reference && selectedWalls.has(wall.id);
     thickness = Math.max(3, thickness);
-    context.fillStyle = ghost ? '#52ac8a96' : active ? '#21866a' : '#25493e';
+    context.fillStyle = reference ? '#adbed3' : ghost ? '#52ac8a96' : active ? '#21866a' : '#25493e';
     context.fillRect(-caps.a*camera.scale,-thickness/2,width+(caps.a+caps.b)*camera.scale,thickness);
   });
 }
@@ -265,18 +268,18 @@ function paintSwing(hingeX, width, hinge, side) {
   context.stroke();
 }
 
-function paintOpening(opening, ghost = false, walls = project.walls) {
+function paintOpening(opening, ghost = false, walls = project.walls, reference = false) {
   const wall = walls.find(w => w.id === opening.wallId);
   if (!wall) return;
   inWallFrame(wall, (wallLength, thickness) => {
     thickness = Math.max(3, thickness);
     const width = opening.width * camera.scale;
     const x = opening.t * wallLength - width/2;
-    const active = selected?.id === opening.id;
-    const color = active ? '#117453' : opening.type === 'door' ? '#537b66' : '#3b8d82';
+    const active = !reference && selected?.id === opening.id;
+    const color = reference ? '#9aaec7' : active ? '#117453' : opening.type === 'door' ? '#537b66' : '#3b8d82';
     const y = thickness / 2;
     if (ghost) context.globalAlpha = .66;
-    context.fillStyle = opening.type === 'door' ? '#f6faf6' : '#beebe1';
+    context.fillStyle = opening.type === 'door' ? '#f6faf6' : reference ? '#dce7f2' : '#beebe1';
     context.fillRect(x, -y, width, thickness);
     context.strokeStyle = color;
     context.lineWidth = active ? 2.5 : 1.5;
@@ -387,11 +390,24 @@ function setMeasurementPoint(position,orthogonal) {
   draw();
 }
 
+function paintOriginal(reference) {
+  const original=project.original;
+  if (!original) return;
+  original.walls.forEach(wall => paintWall(wall,original.walls,false,reference));
+  original.openings.forEach(opening => paintOpening(opening,false,original.walls,reference));
+}
+
 function draw() {
   context.clearRect(0,0,size.width,size.height);
   grid();
+  updatePlanScale();
+  if (view==='original') {
+    paintOriginal(false);
+    return;
+  }
   const drawing = wallGroupDrag?.change || wallDrag?.change || project;
   if (drawing===project) paintFootprint();
+  if (showOriginal) paintOriginal(true);
   drawing.walls.forEach(wall => paintWall(wall,drawing.walls));
   drawing.openings.forEach(opening => {
     const position = openingDrag?.next?.id===opening.id ? openingDrag.next : opening;
@@ -418,7 +434,10 @@ function draw() {
   }
   if (preview) paintOpening(preview, true);
   if (tool==='measure' && view==='plan') drawMeasurement();
-  if (view === 'plan') $('zoom').value = Math.round(100 * camera.scale / camera.base) + '%';
+}
+
+function updatePlanScale() {
+  if (view !== 'model') $('zoom').value = Math.round(100 * camera.scale / camera.base) + '%';
   const scale = camera.scale >= 23 ? 1 : 5;
   $('scale-bar').lastChild.textContent = scale + ' m';
   $('scale-bar').firstElementChild.style.width = scale * camera.scale + 'px';
@@ -494,9 +513,9 @@ function coordinate(event) {
 }
 
 plan.addEventListener('pointerdown', event => {
-  if (view !== 'plan' || ![0,1,2].includes(event.button)) return;
+  if (view === 'model' || ![0,1,2].includes(event.button)) return;
   const p = coordinate(event);
-  if (tool === 'pan' || event.button !== 0) {
+  if (view==='original' || tool === 'pan' || event.button !== 0) {
     dragging = { p, x:camera.x, y:camera.y };
     plan.setPointerCapture(event.pointerId);
     plan.style.cursor = 'grabbing';
@@ -574,6 +593,7 @@ function selectOnPlan(event,p,position) {
 
 plan.addEventListener('pointermove', event => {
   const p = coordinate(event);
+  if (view==='original' && !dragging) return;
   if (wallGroupDrag) {
     const {origin,ids}=wallGroupDrag;
     if (distance(p,origin)<2) {
@@ -643,7 +663,7 @@ plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !open
 plan.addEventListener('wheel',event => { event.preventDefault(); zoomPlan(Math.exp(-event.deltaY*.001),coordinate(event)); },{passive:false});
 plan.addEventListener('contextmenu',event => event.preventDefault());
 
-function cursor() { plan.style.cursor = tool==='pan' ? 'grab' : tool==='select' ? 'default' : 'crosshair'; }
+function cursor() { plan.style.cursor = view==='original' || tool==='pan' ? 'grab' : tool==='select' ? 'default' : 'crosshair'; }
 function setHint(text) { $('hint').textContent=text; }
 function setTool(next) {
   if (view!=='plan') return;
@@ -1084,10 +1104,13 @@ function remove() {
 
 function refresh() {
   const isPlan = view==='plan';
+  const isOriginal = view==='original';
+  const visibleProject=isOriginal ? project.original : project;
+  $('project-name').readOnly=isOriginal;
   $('project-name').value=project.name;
-  $('project-count').textContent=project.walls.length+' '+(project.walls.length===1?'parede':'paredes')+' · '+
-    project.openings.length+' '+(project.openings.length===1?'abertura':'aberturas');
-  $('mode').textContent=isPlan ? tools[tool][0] : 'Navegação 3D';
+  $('project-count').textContent=visibleProject
+    ? visibleProject.walls.length+' paredes · '+visibleProject.openings.length+' aberturas' : '';
+  $('mode').textContent=isOriginal ? 'Planta original' : isPlan ? tools[tool][0] : 'Navegação 3D';
   let hint=tools[tool][1];
   if (tool==='measure') hint=measurementHint();
   if (tool==='window') hint=activeWindowType().name+' · clique em uma parede.';
@@ -1099,14 +1122,26 @@ function refresh() {
     else hint='Arraste o corpo para mover ou uma ponta para esticar. Shift + clique seleciona mais paredes.';
   }
   if (tool==='select' && selected && selected.type!=='wall') hint='Arraste o item para outro trecho de parede.';
-  setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
+  if (isOriginal) setHint(project.original ? 'Arraste para navegar pela planta original.' : 'Salve a planta 2D atual como referência da reforma.');
+  else setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
-  $('model-button').setAttribute('aria-pressed',String(!isPlan));
-  $('orientation').hidden=!isPlan;
-  $('scale-bar').hidden=!isPlan;
+  $('model-button').setAttribute('aria-pressed',String(view==='model'));
+  $('original-button').setAttribute('aria-pressed',String(isOriginal));
+  $('original-actions').hidden=!isOriginal && (!isPlan || !project.original);
+  $('save-original').hidden=!isOriginal;
+  $('save-original').textContent=project.original ? 'Substituir original' : 'Salvar original';
+  const eye=$('toggle-original');
+  eye.hidden=!isPlan || !project.original;
+  eye.setAttribute('aria-pressed',String(Boolean(showOriginal && project.original)));
+  eye.innerHTML=icon(showOriginal ? 'eye' : 'eyeOff');
+  eye.title=showOriginal ? 'Ocultar planta original' : 'Mostrar planta original';
+  $('orientation').hidden=view==='model';
+  $('scale-bar').hidden=view==='model';
   $('empty').hidden=project.walls.length>0 || !isPlan || tool!=='select';
-  $('undo').disabled=!past.length;
-  $('redo').disabled=!future.length;
+  $('undo').disabled=!past.length || isOriginal;
+  $('redo').disabled=!future.length || isOriginal;
+  $('items-toggle').disabled=isOriginal;
+  $('new').disabled=isOriginal;
   $('magnetism').disabled=!isPlan;
   $('magnetism').setAttribute('aria-pressed',String(magnetism));
   $('magnetism').title='Magnetismo '+(magnetism?'ligado':'desligado')+' (G)';
@@ -1116,7 +1151,7 @@ function refresh() {
   });
   inspector();
   renderItems();
-  if (isPlan) draw();
+  if (view!=='model') draw();
   else model?.setProject(project);
 }
 
@@ -1126,11 +1161,13 @@ async function setView(next) {
   view=next;
   start=hover=preview=null;
   resetSelection();
-  const isPlan=next==='plan';
-  plan.hidden=!isPlan;
-  $('model').hidden=isPlan;
+  const isModel=next==='model';
+  plan.hidden=isModel;
+  $('model').hidden=!isModel;
+  if (next==='original') setItems(false);
+  cursor();
   refresh();
-  if (isPlan) {
+  if (!isModel) {
     model?.pause();
     return;
   }
@@ -1159,13 +1196,27 @@ async function setView(next) {
 }
 
 function zoom(factor) {
-  if (view==='plan') zoomPlan(factor);
+  if (view!=='model') zoomPlan(factor);
   else model?.changeZoom(factor);
 }
 
 $('plan-button').onclick=() => setView('plan');
 $('model-button').onclick=() => setView('model');
-$('fit').onclick=() => view==='plan' ? fitPlan() : model?.fit();
+$('original-button').onclick=() => setView('original');
+$('save-original').onclick=() => {
+  if (view!=='original') return;
+  if (project.original && !window.confirm('Substituir a planta original pela planta 2D atual?')) return;
+  const {original, ...current}=project;
+  const snapshot=structuredClone(current);
+  commit(() => { project.original=snapshot; });
+  showOriginal=true;
+  toast('Planta original salva.');
+};
+$('toggle-original').onclick=() => {
+  showOriginal=!showOriginal;
+  refresh();
+};
+$('fit').onclick=() => view!=='model' ? fitPlan() : model?.fit();
 $('zoom-in').onclick=() => zoom(1.2);
 $('zoom-out').onclick=() => zoom(1/1.2);
 $('undo').onclick=() => history(past,future);
@@ -1196,6 +1247,7 @@ $('new').onclick=() => { $('new-dialog').returnValue=''; $('new-dialog').showMod
 $('new-dialog').onclose=() => {
   const choice=$('new-dialog').returnValue;
   if (choice!=='blank' && choice!=='template') return;
+  showOriginal=false;
   start=hover=preview=null;
   resetSelection();
   commit(() => {
@@ -1207,7 +1259,7 @@ $('new-dialog').onclose=() => {
   fitPlan();
 };
 document.addEventListener('keydown',event => {
-  if (event.target.matches('input,select,textarea') || $('new-dialog').open) return;
+  if (view==='original' || event.target.matches('input,select,textarea') || $('new-dialog').open) return;
   const key=event.key.toLowerCase();
   if ((event.metaKey || event.ctrlKey) && ['z','y'].includes(key)) {
     event.preventDefault();

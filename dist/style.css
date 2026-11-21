@@ -161,3 +161,12 @@ dialog form>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px}
 .sync-dot[data-state=busy]{background:#d99a1e}
 .sync-dot[data-state=error]{background:#d1453b}
 .share-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1f2933;color:#fff;padding:10px 14px;border-radius:8px;font-size:.875rem;z-index:50;max-width:calc(100vw - 32px);text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.2)}
+
+.original-actions{position:absolute;z-index:2;bottom:13px;left:50%;transform:translateX(-50%);display:flex;gap:6px}
+.original-actions button{min-height:36px;box-shadow:0 2px 6px #19352f14;white-space:nowrap}
+#toggle-original[aria-pressed=true]{background:#e4edf7;color:#284c72;border-color:#a9bcd1}
+@media(max-width:600px){
+  .original-actions{left:8px;bottom:49px;transform:none}
+  #toggle-original{min-width:36px}
+  .top-actions{gap:4px}
+}
