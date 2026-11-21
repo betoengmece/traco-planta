@@ -1237,6 +1237,7 @@ sync = startSync({
 });
 $('share').onclick = async () => {
   const link = sync.link();
+  if (!await sync.flush()) { toast('Sem conexão. Tente de novo quando a internet voltar.'); return; }
   try {
     if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ title: 'Traço Planta – ' + project.name, url: link }); return; }
     await navigator.clipboard.writeText(link);

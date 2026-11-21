@@ -127,9 +127,11 @@ export function startSync(options) {
           options.status('ok', 'Salvo na nuvem');
         }
       } else {
-        // Projeto ainda não existe na nuvem: envia o que está neste aparelho.
+        // Ainda não existe na nuvem: só envia quando a pessoa editar ou pedir o link.
+        // Assim visitas sem edição (robôs, prévias de link) não criam projetos.
         ready = true;
-        await save();
+        if (storedNumber(pendingKey)) await save();
+        else options.status('idle', 'Salvo neste aparelho');
       }
     } catch (error) {
       console.error(error);
@@ -146,8 +148,16 @@ export function startSync(options) {
   window.addEventListener('focus', pull);
   window.addEventListener('hashchange', () => { if (codeFromHash() && codeFromHash() !== code) location.reload(); });
 
+  async function flush() {
+    clearTimeout(timer);
+    if (!ready) await new Promise(resolve => { const t = setInterval(() => { if (ready) { clearInterval(t); resolve(); } }, 100); });
+    if (version === 0 || dirty || storedNumber(pendingKey)) { dirty = true; await save(); }
+    return !dirty;
+  }
+
   return {
     changed,
+    flush,
     link: () => location.origin + location.pathname + '#p=' + code,
     isNew
   };
