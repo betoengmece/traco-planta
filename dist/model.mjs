@@ -4,10 +4,14 @@ import { bounds, clamp, heading, interval, joinedWallCaps, length } from './geom
 import { houseOutline } from './template.mjs';
 import { surveyOutline } from './survey.mjs?v=20261122-sala';
 
+const eyeHeight=1.60;
+const observerDistance=2.10;
+
 export function createModel(host, onZoom) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#e8efe9');
   const camera = new THREE.OrthographicCamera(-8, 8, 5, -5, .05, 240);
+  const eyeCamera=new THREE.PerspectiveCamera(56,1,.05,80);
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -57,6 +61,87 @@ export function createModel(host, onZoom) {
   let frame = 0;
   let frameSpan = 10;
   let lastZoom = camera.zoom;
+  let hasKitchenView=false;
+  let inKitchenView=false;
+  const photoMaterial=new THREE.MeshBasicMaterial({toneMapped:false,polygonOffset:true,polygonOffsetFactor:1});
+  const backdrop=new THREE.Mesh(new THREE.PlaneGeometry(1,1),photoMaterial);
+  backdrop.visible=false;
+  const observer=createObserver();
+  scene.add(observer);
+
+  function createObserver() {
+    const figure=new THREE.Group();
+    figure.visible=false;
+    const jersey=new THREE.MeshStandardMaterial({color:'#087f70',roughness:.82});
+    const trousers=new THREE.MeshStandardMaterial({color:'#223d48',roughness:.85});
+    const skin=new THREE.MeshStandardMaterial({color:'#d89d74',roughness:.9});
+    const sphere=new THREE.SphereGeometry(1,16,12);
+    const joints=new THREE.CapsuleGeometry(1,2,6,12);
+    function part(geometry,material,x,y,z,sx,sy,sz,tilt=0) {
+      const mesh=new THREE.Mesh(geometry,material);
+      mesh.position.set(x,y,z);
+      mesh.scale.set(sx,sy,sz);
+      mesh.rotation.z=tilt;
+      figure.add(mesh);
+    }
+    part(sphere,jersey,0,1.23,0,.205,.33,.126);
+    part(sphere,skin,0,1.62,0,.103,.128,.105);
+    part(sphere,skin,0,eyeHeight,.10,.032,.029,.037);
+    for (const side of [-1,1]) {
+      part(joints,jersey,side*.212,1.10,0,.064,.135,.064,side*.14);
+      part(sphere,skin,side*.247,.84,0,.052,.074,.053);
+      part(joints,trousers,side*.092,.46,0,.08,.219,.081);
+      part(sphere,trousers,side*.092,.068,.059,.081,.068,.163);
+    }
+    const marker=new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(0,.032,.32),.53,0x087f70,.19,.16);
+    figure.add(marker);
+    return figure;
+  }
+
+  function frameKitchenPhoto() {
+    const photo=photoMaterial.map;
+    if (!photo?.image) return;
+    const sourceAspect=photo.image.width/photo.image.height;
+    const openingAspect=backdrop.scale.x/backdrop.scale.y;
+    const x=Math.min(1,openingAspect/sourceAspect);
+    const y=Math.min(1,sourceAspect/openingAspect);
+    photo.repeat.set(x,y);
+    photo.offset.set((1-x)/2,(1-y)/2);
+    backdrop.visible=true;
+  }
+
+  function setKitchenPhoto(image) {
+    photoMaterial.map?.dispose();
+    const photo=new THREE.Texture(image);
+    photo.colorSpace=THREE.SRGBColorSpace;
+    photo.needsUpdate=true;
+    photoMaterial.map=photo;
+    photoMaterial.needsUpdate=true;
+    frameKitchenPhoto();
+  }
+
+  function addKitchenView(group, opening, wall, center) {
+    const z=wall.thickness/2;
+    const height=opening.sill+opening.height/2;
+    // The inside of the right wall is local +Z. The picture faces it from outside.
+    backdrop.position.set(center,height,-z-.018);
+    backdrop.scale.set(opening.width+.11,opening.height+.11,1);
+    group.add(backdrop);
+    frameKitchenPhoto();
+    observer.position.copy(group.localToWorld(new THREE.Vector3(center,0,z+observerDistance)));
+    observer.rotation.y=group.rotation.y+Math.PI;
+    eyeCamera.position.copy(observer.position);
+    eyeCamera.position.y=eyeHeight;
+    eyeCamera.lookAt(group.localToWorld(new THREE.Vector3(center,height,0)));
+    hasKitchenView=true;
+  }
+
+  function toggleKitchenView() {
+    inKitchenView=hasKitchenView && !inKitchenView;
+    controls.enabled=!inKitchenView;
+    observer.visible=hasKitchenView && !inKitchenView;
+    onZoom(inKitchenView ? eyeCamera.zoom : camera.zoom);
+  }
 
   function solid(parent, x, y, z, w, h, d, material) {
     if (w<.00001 || h<.00001 || d<.00001) return;
@@ -72,7 +157,7 @@ export function createModel(host, onZoom) {
     solid(group,(start+end)/2,(bottom+top)/2,0,end-start,top-bottom,thickness,mats.wall);
   }
 
-  function addOpening(group, opening, wall, start, end) {
+  function addOpening(group, opening, wall, start, end, kitchenWindow) {
     const width=end-start;
     const center=(start+end)/2;
     const head=opening.sill+opening.height;
@@ -84,7 +169,12 @@ export function createModel(host, onZoom) {
     solid(group,center,head-trim/2,0,width,trim,depth,mats.frame);
     if (opening.type==='window') {
       solid(group,center,opening.sill+trim/2,0,width,trim,depth,mats.frame);
-      if (opening.casement) {
+      if (kitchenWindow) {
+        for (const fraction of [.25,.5,.75]) {
+          solid(group,start+width*fraction,opening.sill+opening.height/2,0,trim,opening.height-.02,.043,mats.frame);
+        }
+        addKitchenView(group,opening,wall,center);
+      } else if (opening.casement) {
         const leaf=width*.45;
         const y=opening.sill+opening.height/2;
         const height=opening.height-2*trim;
@@ -107,7 +197,7 @@ export function createModel(host, onZoom) {
     solid(group,hinge,(head-trim)/2,opening.side*leafWidth/2,leafDepth,head-trim,leafWidth,mats.door);
   }
 
-  function addWall(wall,openings,walls) {
+  function addWall(wall,openings,walls,kitchenWindow) {
     const caps=joinedWallCaps(wall,walls);
     const group=new THREE.Group();
     group.position.set(wall.a.x,0,wall.a.y);
@@ -119,7 +209,7 @@ export function createModel(host, onZoom) {
       fillWall(group,position,start,0,wall.height,wall.thickness);
       fillWall(group,start,end,0,opening.sill,wall.thickness);
       fillWall(group,start,end,opening.sill+opening.height,wall.height,wall.thickness);
-      addOpening(group,opening,wall,start,end);
+      addOpening(group,opening,wall,start,end,opening===kitchenWindow);
       position=end;
     }
     fillWall(group,position,length(wall)+caps.b,0,wall.height,wall.thickness);
@@ -127,8 +217,15 @@ export function createModel(host, onZoom) {
 
   function setProject(project) {
     box=bounds(project);
+    backdrop.removeFromParent();
     assembly.clear();
-    project.walls.forEach(wall => addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls));
+    hasKitchenView=false;
+    const kitchenWindow=project.openings.find(opening =>
+      opening.wallId==='right-main' && opening.id==='window-2' && opening.type==='window');
+    project.walls.forEach(wall =>
+      addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls,kitchenWindow));
+    if (!hasKitchenView && inKitchenView) toggleKitchenView();
+    observer.visible=hasKitchenView && !inKitchenView;
     if (Object.hasOwn(slabs,project.template)) assembly.add(slabs[project.template]);
     const span=Math.max(box.width,box.depth);
     const cx=box.x+box.width/2;
@@ -157,10 +254,19 @@ export function createModel(host, onZoom) {
     camera.top=frameSpan/2;
     camera.bottom=-frameSpan/2;
     camera.updateProjectionMatrix();
+    eyeCamera.aspect=aspect;
+    eyeCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(28))*Math.max(1,.72/aspect)));
+    eyeCamera.updateProjectionMatrix();
     renderer.setSize(width,height);
   }
 
   function fit() {
+    if (inKitchenView) {
+      eyeCamera.zoom=1;
+      eyeCamera.updateProjectionMatrix();
+      onZoom(eyeCamera.zoom);
+      return;
+    }
     if (!box) return;
     const cx=box.x+box.width/2;
     const cy=box.y+box.depth/2;
@@ -177,20 +283,24 @@ export function createModel(host, onZoom) {
 
   function tick() {
     frame=requestAnimationFrame(tick);
-    controls.update();
-    if (lastZoom!==camera.zoom) {
-      lastZoom=camera.zoom;
+    if (!inKitchenView) controls.update();
+    const activeCamera=inKitchenView ? eyeCamera : camera;
+    if (lastZoom!==activeCamera.zoom) {
+      lastZoom=activeCamera.zoom;
       onZoom(lastZoom);
     }
-    renderer.render(scene,camera);
+    renderer.render(scene,activeCamera);
   }
 
   return {
-    setProject, fit, resize,
-    get zoom() { return camera.zoom; },
+    setProject, fit, resize, toggleKitchenView, setKitchenPhoto,
+    get hasKitchenView() { return hasKitchenView; },
+    get inKitchenView() { return inKitchenView; },
+    get zoom() { return inKitchenView ? eyeCamera.zoom : camera.zoom; },
     changeZoom(factor) {
-      camera.zoom=clamp(camera.zoom*factor,controls.minZoom,controls.maxZoom);
-      camera.updateProjectionMatrix();
+      const activeCamera=inKitchenView ? eyeCamera : camera;
+      activeCamera.zoom=clamp(activeCamera.zoom*factor,inKitchenView ? .8 : controls.minZoom,inKitchenView ? 2.5 : controls.maxZoom);
+      activeCamera.updateProjectionMatrix();
     },
     resume() { if (!frame) tick(); },
     pause() { cancelAnimationFrame(frame); frame=0; }

@@ -12,6 +12,7 @@ const plan = $('plan');
 const stage = $('stage');
 const context = plan.getContext('2d');
 const storageKey = 'traco-planta-v1';
+const kitchenPhotoKey='traco-planta-foto-janela-cozinha';
 const unit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const preciseUnit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 const tools = {
@@ -1202,6 +1203,68 @@ function refresh() {
   renderItems();
   if (view!=='model') draw();
   else model?.setProject(project);
+  updateKitchenView();
+}
+
+function updateKitchenView() {
+  const button=$('kitchen-view');
+  const visible=view==='model' && model?.hasKitchenView;
+  $('kitchen-controls').hidden=!visible;
+  const inside=Boolean(visible && model.inKitchenView);
+  button.setAttribute('aria-pressed',String(inside));
+  button.querySelector('span').textContent=inside ? 'Voltar à vista 3D' : 'Vista da cozinha';
+  if (inside) {
+    $('mode').textContent='Vista da cozinha';
+    setHint('Altura dos olhos de 1,60 m');
+  } else if (view==='model') {
+    $('mode').textContent='Navegação 3D';
+    setHint('Arraste para girar e role para aproximar ou afastar.');
+  }
+}
+
+function showKitchenPhotoStatus(message) {
+  const status=$('kitchen-photo-status');
+  status.textContent=message;
+  status.hidden=!message;
+}
+
+async function jpegForKitchenPhoto(file) {
+  const url=URL.createObjectURL(file);
+  try {
+    const image=new Image();
+    image.src=url;
+    await image.decode();
+    const scale=Math.min(1,960/Math.max(image.naturalWidth,image.naturalHeight));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
+    canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+    const context=canvas.getContext('2d');
+    context.drawImage(image,0,0,canvas.width,canvas.height);
+    return canvas.toDataURL('image/jpeg',.84);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function loadKitchenPhoto(url) {
+  const image=new Image();
+  image.src=url;
+  await image.decode();
+  model.setKitchenPhoto(image);
+  $('pick-kitchen-photo').textContent='Trocar foto da janela';
+}
+
+async function restoreKitchenPhoto() {
+  const picker=$('pick-kitchen-photo');
+  picker.disabled=true;
+  try {
+    const saved=localStorage.getItem(kitchenPhotoKey);
+    if (saved) await loadKitchenPhoto(saved);
+  } catch {
+    showKitchenPhotoStatus('Escolha uma foto para ver pela janela.');
+  } finally {
+    picker.disabled=false;
+  }
 }
 
 async function setView(next) {
@@ -1230,11 +1293,13 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-sala');
+    const { createModel }=await import('./model.mjs?v=20261122-vista-cozinha');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
     model.setProject(project);
+    updateKitchenView();
+    restoreKitchenPhoto();
     model.fit();
     model.resume();
   } catch (error) {
@@ -1251,6 +1316,35 @@ function zoom(factor) {
 
 $('plan-button').onclick=() => setView('plan');
 $('model-button').onclick=() => setView('model');
+$('kitchen-view').onclick=() => {
+  if (!model?.hasKitchenView) return;
+  model.toggleKitchenView();
+  updateKitchenView();
+};
+$('pick-kitchen-photo').onclick=() => $('kitchen-photo').click();
+$('kitchen-photo').onchange=async event => {
+  const input=event.currentTarget;
+  const file=input.files[0];
+  if (!file || !model) return;
+  const picker=$('pick-kitchen-photo');
+  picker.disabled=true;
+  showKitchenPhotoStatus('Preparando a foto…');
+  try {
+    const photo=await jpegForKitchenPhoto(file);
+    await loadKitchenPhoto(photo);
+    try {
+      localStorage.setItem(kitchenPhotoKey,photo);
+      showKitchenPhotoStatus('Foto salva neste aparelho.');
+    } catch {
+      showKitchenPhotoStatus('Foto disponível enquanto esta página estiver aberta.');
+    }
+  } catch {
+    showKitchenPhotoStatus('Não foi possível abrir a foto. Experimente um arquivo JPEG ou PNG.');
+  } finally {
+    picker.disabled=false;
+    input.value='';
+  }
+};
 $('original-button').onclick=() => setView('original');
 $('save-original').onclick=() => {
   if (view!=='original') return;
