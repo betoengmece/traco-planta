@@ -1204,20 +1204,26 @@ function refresh() {
   renderItems();
   if (view!=='model') draw();
   else model?.setProject(project);
-  updateKitchenView();
+  updateModelControls();
 }
 
-function updateKitchenView() {
-  const button=$('kitchen-view');
-  const visible=view==='model' && model?.hasKitchenView;
-  $('kitchen-controls').hidden=!visible;
-  const inside=Boolean(visible && model.inKitchenView);
-  button.setAttribute('aria-pressed',String(inside));
-  button.querySelector('span').textContent=inside ? 'Voltar à vista 3D' : 'Vista da cozinha';
-  if (inside) {
-    $('mode').textContent='Vista da cozinha';
-    setHint('Altura dos olhos de 1,60 m');
-  } else if (view==='model') {
+function updateModelControls() {
+  const visible=view==='model' && Boolean(model);
+  const walking=visible && model.walking;
+  const kitchen=visible && model.hasKitchenView;
+  $('model-controls').hidden=!visible;
+  $('kitchen-view').hidden=!kitchen;
+  $('pick-kitchen-photo').hidden=!kitchen;
+  if (!kitchen) $('kitchen-photo-status').hidden=true;
+  $('walk-directions').hidden=!walking;
+  $('model').toggleAttribute('data-walking',walking);
+  const walkButton=$('walk-view');
+  walkButton.setAttribute('aria-pressed',String(walking));
+  walkButton.textContent=walking ? 'Voltar ao 3D' : 'Andar pela casa';
+  if (walking) {
+    $('mode').textContent='Caminhada';
+    setHint('Segure uma seta para andar. Arraste a vista para olhar.');
+  } else if (visible) {
     $('mode').textContent='Navegação 3D';
     setHint('Arraste para girar e role para aproximar ou afastar.');
   }
@@ -1277,6 +1283,7 @@ async function restoreKitchenPhoto() {
 
 async function setView(next) {
   if (view===next) return;
+  clearWalkInput();
   const turn=++viewChange;
   view=next;
   start=hover=preview=null;
@@ -1301,12 +1308,12 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-vista-cozinha');
+    const { createModel }=await import('./model.mjs?v=20261122-andar');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
     model.setProject(project);
-    updateKitchenView();
+    updateModelControls();
     restoreKitchenPhoto();
     model.fit();
     model.resume();
@@ -1324,11 +1331,8 @@ function zoom(factor) {
 
 $('plan-button').onclick=() => setView('plan');
 $('model-button').onclick=() => setView('model');
-$('kitchen-view').onclick=() => {
-  if (!model?.hasKitchenView) return;
-  model.toggleKitchenView();
-  updateKitchenView();
-};
+$('walk-view').onclick=() => changeWalkMode(!model?.walking);
+$('kitchen-view').onclick=() => changeWalkMode(true,true);
 $('pick-kitchen-photo').onclick=() => $('kitchen-photo').click();
 $('kitchen-photo').onchange=async event => {
   const input=event.currentTarget;
@@ -1415,6 +1419,83 @@ $('survey-notes').onclick=() => {
   $('survey-door-b').textContent=unit.format(surveyDoors.bWidth)+' cm de largura';
   $('survey-dialog').showModal();
 };
+const walkKeys={
+  w:'forward',arrowup:'forward',s:'back',arrowdown:'back',
+  a:'left',arrowleft:'left',d:'right',arrowright:'right'
+};
+const heldDirections=new Map();
+const walkButtons=[...document.querySelectorAll('[data-walk]')];
+let lookDrag=null;
+
+function syncWalkInput() {
+  const held=new Set(heldDirections.values());
+  model?.setWalkInput(Number(held.has('forward'))-Number(held.has('back')),
+    Number(held.has('right'))-Number(held.has('left')));
+  for (const button of walkButtons) button.toggleAttribute('data-held',held.has(button.dataset.walk));
+}
+
+function clearWalkInput() {
+  heldDirections.clear();
+  lookDrag=null;
+  syncWalkInput();
+}
+
+function changeWalkMode(active, kitchen=false) {
+  if (view!=='model' || !model) return;
+  clearWalkInput();
+  model.setWalking(active,kitchen);
+  updateModelControls();
+}
+
+for (const button of walkButtons) {
+  button.addEventListener('pointerdown',event => {
+    if (!model?.walking || event.button!==0) return;
+    event.preventDefault();
+    button.setPointerCapture(event.pointerId);
+    heldDirections.set(event.pointerId,button.dataset.walk);
+    syncWalkInput();
+  });
+  for (const end of ['pointerup','pointercancel','lostpointercapture']) {
+    button.addEventListener(end,event => {
+      if (heldDirections.delete(event.pointerId)) syncWalkInput();
+    });
+  }
+  button.addEventListener('click',event => {
+    if (event.detail!==0 || !model?.walking) return;
+    heldDirections.set(button,button.dataset.walk);
+    syncWalkInput();
+    setTimeout(() => {
+      if (heldDirections.delete(button)) syncWalkInput();
+    },180);
+  });
+  button.addEventListener('contextmenu',event => event.preventDefault());
+}
+
+const modelHost=$('model');
+modelHost.addEventListener('pointerdown',event => {
+  if (!model?.walking || lookDrag || event.button!==0) return;
+  modelHost.setPointerCapture(event.pointerId);
+  lookDrag={id:event.pointerId,x:event.clientX,y:event.clientY};
+});
+modelHost.addEventListener('pointermove',event => {
+  if (lookDrag?.id!==event.pointerId) return;
+  model.lookWalk(event.clientX-lookDrag.x,event.clientY-lookDrag.y);
+  lookDrag.x=event.clientX;
+  lookDrag.y=event.clientY;
+});
+for (const end of ['pointerup','pointercancel','lostpointercapture']) {
+  modelHost.addEventListener(end,event => {
+    if (lookDrag?.id===event.pointerId) lookDrag=null;
+  });
+}
+window.addEventListener('blur',clearWalkInput);
+document.addEventListener('visibilitychange',() => {
+  if (document.hidden) clearWalkInput();
+});
+document.addEventListener('keyup',event => {
+  if (heldDirections.delete(event.key.toLowerCase())) syncWalkInput();
+});
+
 document.addEventListener('keydown',event => {
   if (view==='original' || event.target.matches('input,select,textarea') || $('new-dialog').open || $('survey-dialog').open) return;
   const key=event.key.toLowerCase();
@@ -1425,6 +1506,15 @@ document.addEventListener('keydown',event => {
     return;
   }
   if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (view==='model' && model?.walking) {
+    if (key==='escape') changeWalkMode(false);
+    else if (Object.hasOwn(walkKeys,key)) {
+      event.preventDefault();
+      heldDirections.set(key,walkKeys[key]);
+      syncWalkInput();
+    }
+    return;
+  }
   if (key==='i') { setItems(!itemsOpen); return; }
   if (view!=='plan') return;
   if (key==='g') { $('magnetism').click(); return; }

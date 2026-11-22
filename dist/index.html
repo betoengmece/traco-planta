@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Desenhe paredes, portas e janelas e explore a planta em 3D.">
 <title>Traço Planta</title>
-<link rel="stylesheet" href="./style.css?v=20261122-vista-cozinha">
+<link rel="stylesheet" href="./style.css?v=20261122-andar">
 </head>
 <body>
 <header class="top">
@@ -45,13 +45,20 @@
     <div class="stage" id="stage">
       <canvas id="plan" aria-label="Área de desenho da planta"></canvas>
       <div id="model" hidden aria-label="Modelo em três dimensões"></div>
-      <div id="kitchen-controls" class="kitchen-controls" hidden>
-        <button id="kitchen-view" class="plain kitchen-view" type="button" aria-pressed="false">
+      <div id="model-controls" class="model-controls" hidden>
+        <button id="walk-view" class="plain kitchen-view" type="button" aria-pressed="false">Andar pela casa</button>
+        <button id="kitchen-view" class="plain kitchen-view" type="button">
           <i data-icon="eye"></i><span>Vista da cozinha</span>
         </button>
         <button id="pick-kitchen-photo" class="plain kitchen-view" type="button">Escolher foto da janela</button>
         <input id="kitchen-photo" type="file" accept="image/*" aria-label="Foto externa da janela" hidden>
         <span id="kitchen-photo-status" role="status" hidden></span>
+      </div>
+      <div id="walk-directions" class="walk-directions" role="group" aria-label="Controles de caminhada" hidden>
+        <button type="button" class="plain" data-walk="forward" aria-label="Andar para frente">↑</button>
+        <button type="button" class="plain" data-walk="left" aria-label="Andar para a esquerda">←</button>
+        <button type="button" class="plain" data-walk="back" aria-label="Andar para trás">↓</button>
+        <button type="button" class="plain" data-walk="right" aria-label="Andar para a direita">→</button>
       </div>
       <div id="empty" class="empty" hidden><i data-icon="plan"></i><strong>Planta em branco</strong><span>Escolha Parede para começar a desenhar.</span></div>
       <div class="orientation" id="orientation"><b>N</b><i data-icon="north"></i></div>
@@ -96,6 +103,6 @@
   <div><button class="primary">Fechar</button></div>
 </form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
-<script type="module" src="./app.mjs?v=20261122-foto-cozinha"></script>
+<script type="module" src="./app.mjs?v=20261122-andar"></script>
 </body>
 </html>
