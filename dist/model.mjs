@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { bounds, clamp, heading, interval, joinedWallCaps, length } from './geometry.mjs';
 import { houseOutline } from './template.mjs';
-import { surveyOutline } from './survey.mjs';
+import { surveyOutline } from './survey.mjs?v=20261122-sala';
 
 export function createModel(host, onZoom) {
   const scene = new THREE.Scene();

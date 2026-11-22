@@ -1,7 +1,7 @@
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
-import { livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyCorrections } from './survey.mjs';
+import { livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyCorrections } from './survey.mjs?v=20261122-sala';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { startSync } from './sync.mjs';
@@ -393,6 +393,9 @@ function setMeasurementPoint(position,orthogonal) {
 }
 
 function paintSurveyDimensions(visibleProject) {
+  const fullSurvey=visibleProject.template==='survey';
+  const windowDimensions=livingWindowDimensions(visibleProject);
+  if (!fullSurvey && !windowDimensions.length) return;
   context.save();
   context.textAlign='center';
   context.textBaseline='middle';
@@ -401,7 +404,9 @@ function paintSurveyDimensions(visibleProject) {
   const room=screen(livingRoomLabel);
   context.fillText('Sala',room.x,room.y);
   context.font='700 12px DM Sans, sans-serif';
-  const dimensions=[...surveyDimensions,...lowerLeftDoorDimensions(visibleProject),...livingWindowDimensions(visibleProject)];
+  const dimensions=fullSurvey
+    ? [...surveyDimensions,...lowerLeftDoorDimensions(visibleProject),...windowDimensions]
+    : windowDimensions;
   for (const {a,b,cm,reference,approximate,suffix=''} of dimensions) {
     const first=screen(a);
     const last=screen(b);
@@ -443,7 +448,7 @@ function draw() {
   updatePlanScale();
   if (view==='original') {
     paintOriginal(false);
-    if (project.original?.template==='survey') paintSurveyDimensions(project.original);
+    if (project.original) paintSurveyDimensions(project.original);
     return;
   }
   const drawing = wallGroupDrag?.change || wallDrag?.change || project;
@@ -464,7 +469,7 @@ function draw() {
     wallMeasure({a:{x:box.x,y:box.y},b:{x:box.x+box.width,y:box.y}},24);
     wallMeasure({a:{x:box.x,y:box.y+box.depth},b:{x:box.x,y:box.y}},23);
   }
-  if (drawing===project && project.template==='survey' && !selected && tool==='select') paintSurveyDimensions(project);
+  if (drawing===project && tool==='select') paintSurveyDimensions(project);
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
       const ghost = { id:'preview-wall',a:start,b:hover,thickness:placementThickness() };
@@ -1177,7 +1182,8 @@ function refresh() {
   eye.setAttribute('aria-pressed',String(Boolean(showOriginal && project.original)));
   eye.innerHTML=icon(showOriginal ? 'eye' : 'eyeOff');
   eye.title=showOriginal ? 'Ocultar planta original' : 'Mostrar planta original';
-  $('survey-notes').hidden=view==='model' || visibleProject?.template!=='survey';
+  $('survey-notes').hidden=view==='model' || !visibleProject ||
+    (visibleProject.template!=='survey' && !livingWindowDimensions(visibleProject).length);
   $('orientation').hidden=view==='model';
   $('scale-bar').hidden=view==='model';
   $('empty').hidden=project.walls.length>0 || !isPlan || tool!=='select';
@@ -1224,7 +1230,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs');
+    const { createModel }=await import('./model.mjs?v=20261122-sala');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });

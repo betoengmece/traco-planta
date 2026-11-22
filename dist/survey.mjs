@@ -105,8 +105,13 @@ const livingWindowType='survey-living-window-lower';
 const misplacedWindowType='survey-living-window';
 const stockUpperWindow=previousOpenings.find(opening => opening.wallId==='top-left');
 
+function matchesSurveyWall(wall, id) {
+  const baseline=walls.find(item => item.id===id);
+  return wall?.a.x===baseline.a.x && wall.a.y===baseline.a.y &&
+    wall.b.x===baseline.b.x && wall.b.y===baseline.b.y;
+}
+
 function restoreUpperWindow(project) {
-  if (project?.template!=='survey') return project;
   const opening=project.openings.find(item => item.id===stockUpperWindow.id);
   const misplacedWidth=metres(field.upperLeftWidth-livingWindow.left-livingWindow.right);
   const misplacedT=(half+metres(livingWindow.left)+misplacedWidth/2)/leftRoom;
@@ -118,7 +123,7 @@ function restoreUpperWindow(project) {
   const wall=project.walls.find(item => item.id===opening.wallId);
   const stockType=project.windowTypes?.find(type => !type.casement &&
     ['width','height','sill'].every(key => type[key]===stockUpperWindow[key]));
-  if (!wall || !stockType) return project;
+  if (!matchesSurveyWall(wall,'top-left') || !stockType) return project;
   const restoredWindow={...stockUpperWindow,typeId:stockType.id};
   const restoredWall={...wall,height:2.5};
   const openings=project.openings.map(item => item===opening ? restoredWindow : item);
@@ -134,15 +139,14 @@ function restoreUpperWindow(project) {
 }
 
 function applyLivingWindowSurvey(project) {
-  if (project?.template!=='survey') return project;
   const opening=project.openings.find(item => item.id===previousLivingWindow.id);
   const wall=project.walls.find(item => item.id===livingWindowWallId);
-  if (!wall || wall.height!==2.5 || opening?.wallId!==wall.id ||
+  if (!matchesSurveyWall(wall,livingWindowWallId) || wall.height!==2.5 || opening?.wallId!==wall.id ||
       !['t','width','height','sill','casement'].every(key => opening[key]===previousLivingWindow[key])) return project;
 
   const startWall=project.walls.find(item => item.id===livingWindowStartWallId);
   const endWall=project.walls.find(item => item.id===livingWindowEndWallId);
-  if (!startWall || !endWall ||
+  if (!matchesSurveyWall(startWall,livingWindowStartWallId) || !matchesSurveyWall(endWall,livingWindowEndWallId) ||
       Math.abs(length(wall)-(startWall.thickness+endWall.thickness)/2-metres(field.lowerLeftWidth))>1e-6) return project;
 
   const width=metres(livingWindowWidth);
@@ -166,7 +170,10 @@ function applyLivingWindowSurvey(project) {
 }
 
 export function withSurveyCorrections(project) {
-  const update=copy => applyLivingWindowSurvey(restoreUpperWindow(correctSurveyCopy(copy)));
+  function update(copy) {
+    if (copy?.template!=='survey' && copy?.original?.template!=='survey') return copy;
+    return applyLivingWindowSurvey(restoreUpperWindow(correctSurveyCopy(copy)));
+  }
   const corrected=update(project);
   const original=update(project.original);
   return original===project.original ? corrected : {...corrected,original};
@@ -221,7 +228,8 @@ export function livingWindowDimensions(project) {
   const opening=project.openings.find(item => item.typeId===livingWindowType && item.wallId===wall?.id);
   const startWall=project.walls.find(item => item.id===livingWindowStartWallId);
   const endWall=project.walls.find(item => item.id===livingWindowEndWallId);
-  if (!opening || !startWall || !endWall) return [];
+  if (!opening || !matchesSurveyWall(wall,livingWindowWallId) ||
+      !matchesSurveyWall(startWall,livingWindowStartWallId) || !matchesSurveyWall(endWall,livingWindowEndWallId)) return [];
   const [start,end]=interval(opening,wall);
   const left=wall.a.x+startWall.thickness/2;
   const right=wall.b.x-endWall.thickness/2;
