@@ -13,6 +13,7 @@ const stage = $('stage');
 const context = plan.getContext('2d');
 const storageKey = 'traco-planta-v1';
 const kitchenPhotoKey='traco-planta-foto-janela-cozinha';
+const defaultKitchenPhoto=new URL('./assets/vista-cozinha.webp',import.meta.url).href;
 const unit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const preciseUnit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 const tools = {
@@ -1258,10 +1259,17 @@ async function restoreKitchenPhoto() {
   const picker=$('pick-kitchen-photo');
   picker.disabled=true;
   try {
-    const saved=localStorage.getItem(kitchenPhotoKey);
-    if (saved) await loadKitchenPhoto(saved);
+    let saved;
+    try { saved=localStorage.getItem(kitchenPhotoKey); } catch {}
+    if (saved) {
+      try {
+        await loadKitchenPhoto(saved);
+        return;
+      } catch {}
+    }
+    await loadKitchenPhoto(defaultKitchenPhoto);
   } catch {
-    showKitchenPhotoStatus('Escolha uma foto para ver pela janela.');
+    showKitchenPhotoStatus('Não foi possível carregar a foto da janela. Escolha uma foto do aparelho.');
   } finally {
     picker.disabled=false;
   }
