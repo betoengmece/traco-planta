@@ -43,6 +43,13 @@ const livingWindowStartWallId='left-lower';
 const livingWindowEndWallId='rear-side';
 export const livingRoomLabel={x:rearRoom/2,y:leftBottom-.92};
 
+// Elevation measured from inside the kitchen, facing the right-hand wall.
+const kitchenWindow = {left:64+tape,right:98+tape,floor:108+tape,ceiling:40+tape};
+const kitchenWindowWallId='right-main';
+const kitchenWindowType='survey-kitchen-window';
+const kitchenWindowStartWallId='annex-bottom';
+const kitchenWindowEndWallId='strip-top';
+
 const layout = {
   leftRoom, rearRoom, passage, annex, right, topLeft:0, entry, annexBottom,
   leftPartition, stripTop, leftRoomBottom, stripBottom, rearBottom, leftBottom
@@ -169,10 +176,40 @@ function applyLivingWindowSurvey(project) {
   };
 }
 
+function applyKitchenWindowSurvey(project) {
+  const previous=previousOpenings.find(item=>item.wallId===kitchenWindowWallId && item.type==='window');
+  const opening=project.openings.find(item=>item.id===previous.id);
+  const wall=project.walls.find(item=>item.id===kitchenWindowWallId);
+  if (!matchesSurveyWall(wall,kitchenWindowWallId) || opening?.wallId!==wall.id ||
+      !['t','width','height','sill','casement'].every(key=>opening[key]===previous[key])) return project;
+  const startWall=project.walls.find(item=>item.id===kitchenWindowStartWallId);
+  const endWall=project.walls.find(item=>item.id===kitchenWindowEndWallId);
+  if (!matchesSurveyWall(startWall,kitchenWindowStartWallId) || !matchesSurveyWall(endWall,kitchenWindowEndWallId)) return project;
+  const span=length(wall);
+  const clearSpan=span-(startWall.thickness+endWall.thickness)/2;
+  if (Math.abs(clearSpan-metres(field.upperRightDepth))>1e-6) return project;
+
+  const width=metres(field.upperRightDepth-kitchenWindow.left-kitchenWindow.right);
+  const sill=metres(kitchenWindow.floor);
+  const height=Math.round((wall.height-sill-metres(kitchenWindow.ceiling))*100)/100;
+  const measuredWindow={
+    ...opening,width,height,sill,typeId:kitchenWindowType,
+    t:(startWall.thickness/2+metres(kitchenWindow.left)+width/2)/span
+  };
+  if (!validateOpening(measuredWindow,wall,project.openings)) return project;
+  const withTypes=withWindowTypes(project);
+  const measuredType={id:kitchenWindowType,name:'Janela da cozinha',width,height,sill,casement:false};
+  return {
+    ...withTypes,
+    openings:withTypes.openings.map(item=>item.id===opening.id ? measuredWindow : item),
+    windowTypes:[...withTypes.windowTypes.filter(item=>item.id!==kitchenWindowType),measuredType]
+  };
+}
+
 export function withSurveyCorrections(project) {
   function update(copy) {
     if (copy?.template!=='survey' && copy?.original?.template!=='survey') return copy;
-    return applyLivingWindowSurvey(restoreUpperWindow(correctSurveyCopy(copy)));
+    return applyKitchenWindowSurvey(applyLivingWindowSurvey(restoreUpperWindow(correctSurveyCopy(copy))));
   }
   const corrected=update(project);
   const original=update(project.original);
@@ -238,6 +275,26 @@ export function livingWindowDimensions(project) {
     h((wall.a.x+start-left)*100,left,wall.a.x+start,y),
     h(opening.width*100,wall.a.x+start,wall.a.x+end,y),
     h((right-wall.a.x-end)*100,wall.a.x+end,right,y)
+  ];
+}
+
+export function kitchenWindowDimensions(project) {
+  const wall=project.walls.find(item=>item.id===kitchenWindowWallId);
+  const opening=project.openings.find(item=>item.typeId===kitchenWindowType && item.wallId===wall?.id);
+  const startWall=project.walls.find(item=>item.id===kitchenWindowStartWallId);
+  const endWall=project.walls.find(item=>item.id===kitchenWindowEndWallId);
+  if (!opening || !matchesSurveyWall(wall,kitchenWindowWallId) ||
+      !matchesSurveyWall(startWall,kitchenWindowStartWallId) || !matchesSurveyWall(endWall,kitchenWindowEndWallId)) return [];
+  const [start,end]=interval(opening,wall);
+  const left=wall.a.y+startWall.thickness/2;
+  const right=wall.b.y-endWall.thickness/2;
+  const x=wall.a.x-.37;
+  const first=wall.a.y+start;
+  const last=wall.a.y+end;
+  return [
+    v((first-left)*100,x,left,first),
+    v(opening.width*100,x,first,last),
+    v((right-last)*100,x,last,right)
   ];
 }
 
