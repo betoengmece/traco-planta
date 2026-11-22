@@ -1,7 +1,7 @@
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
-import { surveyDimensions, surveyDoors, surveyOutline, surveyProject } from './survey.mjs';
+import { lowerLeftDoorDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyDoorCorrection } from './survey.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { startSync } from './sync.mjs';
@@ -67,7 +67,7 @@ const past = [];
 const future = [];
 renderIcons();
 
-function prepareProject(value) { return withWindowTypes(withWallThickness(value)); }
+function prepareProject(value) { return withWindowTypes(withWallThickness(withSurveyDoorCorrection(value))); }
 
 function placementThickness() {
   return placementDefaults.wall.thicknessOverride ?? project.wallThickness;
@@ -392,12 +392,12 @@ function setMeasurementPoint(position,orthogonal) {
   draw();
 }
 
-function paintSurveyDimensions() {
+function paintSurveyDimensions(visibleProject) {
   context.save();
   context.font='700 12px DM Sans, sans-serif';
   context.textAlign='center';
   context.textBaseline='middle';
-  for (const {a,b,cm,reference,approximate,suffix=''} of surveyDimensions) {
+  for (const {a,b,cm,reference,approximate,suffix=''} of [...surveyDimensions,...lowerLeftDoorDimensions(visibleProject)]) {
     const first=screen(a);
     const last=screen(b);
     const horizontal=a.y===b.y;
@@ -438,7 +438,7 @@ function draw() {
   updatePlanScale();
   if (view==='original') {
     paintOriginal(false);
-    if (project.original?.template==='survey') paintSurveyDimensions();
+    if (project.original?.template==='survey') paintSurveyDimensions(project.original);
     return;
   }
   const drawing = wallGroupDrag?.change || wallDrag?.change || project;
@@ -459,7 +459,7 @@ function draw() {
     wallMeasure({a:{x:box.x,y:box.y},b:{x:box.x+box.width,y:box.y}},24);
     wallMeasure({a:{x:box.x,y:box.y+box.depth},b:{x:box.x,y:box.y}},23);
   }
-  if (drawing===project && project.template==='survey' && !selected && tool==='select') paintSurveyDimensions();
+  if (drawing===project && project.template==='survey' && !selected && tool==='select') paintSurveyDimensions(project);
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
       const ghost = { id:'preview-wall',a:start,b:hover,thickness:placementThickness() };

@@ -1,4 +1,4 @@
-import { clamp, defaultWallThickness, length } from './geometry.mjs';
+import { clamp, defaultWallThickness, interval, length, validateOpening } from './geometry.mjs';
 import { defaultProject, houseLayout } from './template.mjs';
 
 const tape = 7;
@@ -14,7 +14,7 @@ const field = {
   stripWidth:230, stripDepth:143, stripSide:162,
   lowerLeftWidth:318+tape, lowerLeftDepth:407+tape,
   lowerRightWidth:315+tape, lowerRightDepth:345+tape, rearDoor:72+tape,
-  firstStep:72+tape, secondStep:35+tape
+  lowerLeftDoorWidth:72+tape, lowerLeftDoorOffset:35+tape
 };
 
 const leftRoom = metres(field.upperLeftWidth) + thickness;
@@ -65,7 +65,36 @@ function surveyedOpenings() {
     return result;
   });
 }
-const openings=surveyedOpenings();
+const previousOpenings=surveyedOpenings();
+const previousLowerLeftDoor=previousOpenings.find(opening => opening.wallId==='left-lower');
+
+function lowerLeftDoorPlacement(door,wall,bottomWall) {
+  const width=metres(field.lowerLeftDoorWidth);
+  const distanceFromEnd=bottomWall.thickness/2+metres(field.lowerLeftDoorOffset);
+  return {...door,width,t:1-(distanceFromEnd+width/2)/length(wall)};
+}
+
+function correctSurveyCopy(project) {
+  if (project?.template!=='survey') return project;
+  const door=project.openings.find(opening => opening.id===previousLowerLeftDoor.id);
+  // Only reposition the previous preset's door if its location and width are still intact.
+  if (door?.wallId!==previousLowerLeftDoor.wallId || door.t!==previousLowerLeftDoor.t ||
+      door.width!==previousLowerLeftDoor.width) return project;
+  const wall=project.walls.find(item => item.id===door.wallId);
+  const bottomWall=project.walls.find(item => item.id==='bottom-left');
+  if (!wall || !bottomWall) return project;
+  const corrected=lowerLeftDoorPlacement(door,wall,bottomWall);
+  if (!validateOpening(corrected,wall,project.openings)) return project;
+  return {...project,openings:project.openings.map(opening => opening===door ? corrected : opening)};
+}
+
+export function withSurveyDoorCorrection(project) {
+  const corrected=correctSurveyCopy(project);
+  const original=correctSurveyCopy(project.original);
+  return original===project.original ? corrected : {...corrected,original};
+}
+
+const openings=correctSurveyCopy({template:'survey',walls,openings:previousOpenings}).openings;
 
 export function surveyProject() {
   const original=structuredClone({name:'Levantamento da casa',walls,openings,template:'survey',wallThickness:thickness});
@@ -84,8 +113,7 @@ const doorBounds = wallId => {
 };
 const [doorAStart,doorAEnd] = doorBounds('lower-divider');
 const [rearDoorStart,rearDoorEnd] = doorBounds('rear-entry');
-const firstStepStart = leftBottom-metres(field.secondStep+field.firstStep);
-const secondStepStart = leftBottom-metres(field.secondStep);
+
 
 export const surveyDimensions = [
   h(field.upperLeftWidth,half,leftRoom-half,1.55),
@@ -106,7 +134,22 @@ export const surveyDimensions = [
   h(field.lowerLeftWidth,half,rearRoom-half,leftBottom-1.55),
   v(field.lowerLeftDepth,.52,leftRoomBottom+half,leftBottom-half),
   h(field.lowerRightWidth,rearRoom+half,right-half,rearBottom-1.25),
-  v(field.lowerRightDepth,right-.52,stripBottom+half,rearBottom-half),
-  v(field.firstStep,-.21,firstStepStart,secondStepStart,{reference:true}),
-  v(field.secondStep,.06,secondStepStart,leftBottom,{reference:true})
+  v(field.lowerRightDepth,right-.52,stripBottom+half,rearBottom-half)
 ];
+
+export function lowerLeftDoorDimensions(project) {
+  const wall=project.walls.find(item => item.id==='left-lower');
+  const bottomWall=project.walls.find(item => item.id==='bottom-left');
+  const door=project.openings.find(item => item.id===previousLowerLeftDoor.id && item.wallId===wall?.id);
+  if (!door || !bottomWall) return [];
+  const [start,end]=interval(door,wall);
+  const innerFace=wall.b.y-bottomWall.thickness/2;
+  const jamb=wall.a.y+end;
+  const offset=Math.abs(innerFace-jamb);
+  if (Math.abs(door.width-metres(field.lowerLeftDoorWidth))>1e-6 ||
+      Math.abs(offset-metres(field.lowerLeftDoorOffset))>1e-6) return [];
+  return [
+    v(field.lowerLeftDoorWidth,wall.a.x+.33,wall.a.y+start,jamb),
+    v(field.lowerLeftDoorOffset,wall.a.x+.16,jamb,innerFace)
+  ];
+}
