@@ -7,6 +7,8 @@ import { surveyOutline } from './survey.mjs?v=20261122-janela-cozinha';
 import { canStand, eyeHeight, walkBarriers, walkSpawn, walkStep } from './walk.mjs';
 import { createGardenView } from './garden-view.mjs';
 import { livingRoomFurniture } from './living-room.mjs';
+import { interiorLayout } from './interior-layout.mjs';
+import { makeInterior } from './interior-model.mjs';
 
 const observerDistance=2.10;
 
@@ -40,9 +42,9 @@ export function createModel(host, onZoom) {
   scene.add(sun,sun.target);
 
   const mats = {
-    wall:new THREE.MeshStandardMaterial({color:'#c7d5cd',roughness:.85}),
-    frame:new THREE.MeshStandardMaterial({color:'#25493e',roughness:.55}),
-    door:new THREE.MeshStandardMaterial({color:'#bd916b',roughness:.74}),
+    wall:new THREE.MeshStandardMaterial({color:'#e7e3d8',roughness:.85}),
+    frame:new THREE.MeshStandardMaterial({color:'#4f463b',roughness:.55}),
+    door:new THREE.MeshStandardMaterial({color:'#694735',roughness:.74}),
     glass:new THREE.MeshStandardMaterial({color:'#78c6c9',transparent:true,opacity:.38,roughness:.16,depthWrite:false}),
     floor:new THREE.MeshStandardMaterial({color:'#c8bc9f',roughness:.9,side:THREE.DoubleSide}),
     base:new THREE.MeshStandardMaterial({color:'#dce7dd',roughness:1})
@@ -73,6 +75,9 @@ export function createModel(host, onZoom) {
   let sideways=0;
   let previousFrame=null;
   const garden=createGardenView();
+  const interior=makeInterior();
+  const ceiling=new THREE.Group();
+  const finishes=new THREE.Group();
   const upholstery=new THREE.MeshStandardMaterial({color:'#a6ad92',roughness:.97});
   const cushion=new THREE.MeshStandardMaterial({color:'#b7bea4',roughness:.97});
   const feet=new THREE.MeshStandardMaterial({color:'#6e4e36',roughness:.8});
@@ -150,6 +155,7 @@ export function createModel(host, onZoom) {
       eyeCamera.updateProjectionMatrix();
     }
     walking=active;
+    ceiling.visible=walking;
     controls.enabled=!active;
     forward=sideways=0;
     updateObserver();
@@ -205,6 +211,28 @@ export function createModel(host, onZoom) {
     solid(group,tv.x,tv.elevation,tv.y,tv.width+.036,tv.height+.043,.049,tvFrame);
     solid(group,tv.x,tv.elevation,tv.y+.026,tv.width,tv.height,.007,screen);
     barriers.push({x:sofa.x,y:sofa.y,ux:1,uy:0,half:sofa.depth/2,start:-sofa.width/2,end:sofa.width/2});
+  }
+
+  function addInteriors(project) {
+    for (const group of [ceiling,finishes]) {
+      for (const surface of group.children) surface.geometry.dispose();
+      group.clear();
+      assembly.add(group);
+    }
+    const {rooms,items}=interiorLayout(project);
+    for (const room of rooms) {
+      finishes.add(interior.roomSurface(room,false));
+      ceiling.add(interior.roomSurface(room,true));
+    }
+    for (const item of items) {
+      assembly.add(interior.furnishing(item,solid));
+      if (item.blocks) {
+        const ux=Math.cos(item.rotation*Math.PI/2);
+        const uy=-Math.sin(item.rotation*Math.PI/2);
+        barriers.push({x:item.x,y:item.y,ux,uy,half:item.depth/2,start:-item.width/2,end:item.width/2});
+      }
+    }
+    ceiling.visible=walking;
   }
 
   function fillWall(group,start,end,bottom,top,thickness) {
@@ -280,6 +308,7 @@ export function createModel(host, onZoom) {
     project.walls.forEach(wall =>
       addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls,kitchenWindow));
     addLivingRoom(project);
+    addInteriors(project);
     const {x,z}=eyeCamera.position;
     const outside=x<box.x-2 || x>box.x+box.width+2 || z<box.y-2 || z>box.y+box.depth+2;
     if ((hasWalkPosition && (outside || !canStand(x,z,barriers))) || (!hasWalkPosition && kitchenStart)) {

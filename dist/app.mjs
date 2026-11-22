@@ -1,3 +1,4 @@
+import { interiorLayout } from './interior-layout.mjs';
 import { livingRoomFurniture } from './living-room.mjs';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
@@ -395,6 +396,48 @@ function setMeasurementPoint(position,orthogonal) {
   draw();
 }
 
+const finishFills={terracotta:'#d9a681',grayTile:'#dfded6',parquet:'#d3b38e',neutral:'#e4d8c3'};
+function paintRoomFloors(rooms) {
+  context.save();
+  for (const room of rooms) {
+    const a=screen({x:room.left,y:room.top});
+    const b=screen({x:room.right,y:room.bottom});
+    context.fillStyle=finishFills[room.finish];
+    context.fillRect(a.x,a.y,b.x-a.x,b.y-a.y);
+  }
+  context.restore();
+}
+
+function paintRoomItems(rooms,items) {
+  context.save();
+  for (const item of items) {
+    if (!item.blocks) continue;
+    const p=screen(item);
+    const w=item.width*camera.scale, d=item.depth*camera.scale;
+    context.save();
+    context.translate(p.x,p.y);
+    context.rotate(item.rotation*Math.PI/2);
+    context.fillStyle=item.kind==='bed' ? '#c99aa7' : item.kind==='table' ? '#8b7c6b' : '#f4ecdf';
+    context.strokeStyle='#766c5f';
+    context.fillRect(-w/2,-d/2,w,d);
+    context.strokeRect(-w/2,-d/2,w,d);
+    context.restore();
+  }
+  context.fillStyle='#564c40';
+  context.font='700 12px DM Sans, sans-serif';
+  context.textAlign='center';
+  for (const room of rooms) {
+    if (!room.label) continue;
+    const p=screen({x:(room.left+room.right)/2,y:room.top+(room.bottom-room.top)*.31});
+    context.save();
+    context.translate(p.x,p.y);
+    if (room.name==='Corredor') context.rotate(-Math.PI/2);
+    context.fillText(room.name,0,0);
+    context.restore();
+  }
+  context.restore();
+}
+
 function paintLivingRoom(drawing) {
   const furniture=livingRoomFurniture(drawing);
   if (!furniture) return;
@@ -484,12 +527,15 @@ function draw() {
   }
   const drawing = wallGroupDrag?.change || wallDrag?.change || project;
   if (drawing===project) paintFootprint();
+  const interiors=interiorLayout(drawing);
+  paintRoomFloors(interiors.rooms);
   if (showOriginal) paintOriginal(true);
   drawing.walls.forEach(wall => paintWall(wall,drawing.walls));
   drawing.openings.forEach(opening => {
     const position = openingDrag?.next?.id===opening.id ? openingDrag.next : opening;
     paintOpening(position,false,drawing.walls);
   });
+  paintRoomItems(interiors.rooms,interiors.items);
   paintLivingRoom(drawing);
   const selectedWall = selectedWalls.size===1 ? drawing.walls.find(wall => selectedWalls.has(wall.id)) : null;
   if (selectedWall) {
@@ -1339,7 +1385,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-janela-cozinha');
+    const { createModel }=await import('./model.mjs?v=20261122-interiores');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
