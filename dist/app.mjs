@@ -1,3 +1,4 @@
+import { siteExterior } from './site-exterior.mjs';
 import { furnitureFootprint, furnitureNames, furnitureTarget } from './furniture-position.mjs';
 import { interiorLayout } from './interior-layout.mjs?v=20261122-moveis';
 import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
@@ -183,8 +184,13 @@ function fitPlan() {
   const originals=project.original?.walls ?? [];
   const walls=view==='original' ? originals : showOriginal ? [...project.walls,...originals] : project.walls;
   const box = bounds({walls});
-  const scale = clamp(Math.min((size.width - 64) / box.width, (size.height - 82) / box.depth), 10, 135);
-  camera = { x: box.x + box.width / 2, y: box.y + box.depth / 2, scale, base: scale };
+  const exterior=siteExterior({walls});
+  const x=exterior ? Math.min(box.x,exterior.garage.left) : box.x;
+  const y=exterior ? Math.min(box.y,exterior.side.gateY-.24) : box.y;
+  const right=exterior ? Math.max(box.x+box.width,exterior.side.outer+.78) : box.x+box.width;
+  const bottom=box.y+box.depth;
+  const scale = clamp(Math.min((size.width - 64) / (right-x), (size.height - 82) / (bottom-y)), 10, 135);
+  camera = { x:(x+right)/2, y:(y+bottom)/2, scale, base:scale };
   fitted = true;
   draw();
 }
@@ -486,6 +492,74 @@ function paintLivingRoom(drawing) {
   context.restore();
 }
 
+function exteriorRect(left,top,right,bottom,color) {
+  const a=screen({x:left,y:top});
+  const b=screen({x:right,y:bottom});
+  context.fillStyle=color;
+  context.fillRect(a.x,a.y,b.x-a.x,b.y-a.y);
+}
+
+function paintExterior(exterior) {
+  if (!exterior) return;
+  const {garage,side}=exterior;
+  context.save();
+  exteriorRect(garage.left,garage.rear,garage.right,garage.front,'#eed9c9');
+  exteriorRect(side.bathroomFace,side.gateY,side.outer,side.recessY,'#e5ecdb');
+  exteriorRect(side.kitchenFace,side.recessY,side.outer,side.kitchenEnd,'#e5ecdb');
+  if (side.drawnBathroomFace<side.bathroomFace) {
+    exteriorRect(side.drawnBathroomFace,side.bathroomRear,side.bathroomFace,side.recessY,'#ece0cf');
+  }
+  context.strokeStyle='#856b52';
+  context.lineWidth=1.5;
+  const line=(x1,y1,x2,y2)=>{
+    const a=screen({x:x1,y:y1}),b=screen({x:x2,y:y2});
+    stroke(a.x,a.y,b.x,b.y);
+  };
+  line(garage.left,garage.rear,garage.left,garage.front);
+  line(side.outer,side.gateY,side.outer,side.kitchenEnd);
+  context.setLineDash([5,4]);
+  line(garage.left,garage.rear,garage.right,garage.rear);
+  line(garage.left,garage.front,garage.right,garage.front);
+  line(side.bathroomFace,side.gateY,side.outer,side.gateY);
+  line(side.bathroomFace,side.gateY,side.bathroomFace,side.recessY);
+  line(side.kitchenFace,side.recessY,side.bathroomFace,side.recessY);
+  context.restore();
+}
+
+function paintExteriorDimensions(exterior) {
+  if (!exterior) return;
+  const {garage,side}=exterior;
+  const label=(text,x,y)=>{
+    const p=screen({x,y});
+    context.fillText(text,p.x,p.y);
+  };
+  const width=(left,right,y)=>({a:{x:left,y},b:{x:right,y},cm:Math.round((right-left)*100)});
+  context.save();
+  context.textAlign='center';
+  context.textBaseline='middle';
+  context.font='700 13px DM Sans, sans-serif';
+  context.fillStyle='#604637';
+  const garageTextY=(garage.rear+garage.front)/2;
+  label('Garagem',(garage.left+garage.right)/2,garageTextY);
+  context.font='600 11px DM Sans, sans-serif';
+  context.textAlign='right';
+  label('Portão antigo*',side.outer,side.gateY-.28);
+  context.textAlign='center';
+  context.font='700 12px DM Sans, sans-serif';
+  const transition=width(side.kitchenFace,side.bathroomFace,side.recessY+.38);
+  const vertical={
+    a:{x:side.outer+.64,y:side.gateY},b:{x:side.outer+.64,y:side.recessY},
+    cm:210,display:'2,10 m',reference:true,approximate:true
+  };
+  paintDimensions([
+    width(garage.left,garage.right,garageTextY+.82),
+    width(side.bathroomFace,side.outer,side.gateY+.93),
+    width(side.kitchenFace,side.outer,side.recessY+1.27),
+    transition,vertical
+  ]);
+  context.restore();
+}
+
 function paintSurveyDimensions(visibleProject) {
   const fullSurvey=visibleProject.template==='survey';
   const livingDimensions=livingWindowDimensions(visibleProject);
@@ -504,11 +578,16 @@ function paintSurveyDimensions(visibleProject) {
   const dimensions=fullSurvey
     ? [...surveyDimensions,...lowerLeftDoorDimensions(visibleProject),...windowDimensions]
     : windowDimensions;
-  for (const {a,b,cm,reference,approximate,suffix=''} of dimensions) {
+  paintDimensions(dimensions);
+  context.restore();
+}
+
+function paintDimensions(dimensions) {
+  for (const {a,b,cm,display,reference,approximate,suffix=''} of dimensions) {
     const first=screen(a);
     const last=screen(b);
     const horizontal=a.y===b.y;
-    const label=(approximate ? '≈ ' : '')+measurementLabel(cm/100)+(reference ? '*' : '')+suffix;
+    const label=(approximate ? '≈ ' : '')+(display ?? measurementLabel(cm/100))+(reference ? '*' : '')+suffix;
     const color=reference ? '#8b5019' : '#1c7062';
     context.strokeStyle=color;
     context.lineWidth=1;
@@ -529,7 +608,6 @@ function paintSurveyDimensions(visibleProject) {
     context.fillText(label,0,0);
     context.restore();
   }
-  context.restore();
 }
 
 function paintOriginal(reference) {
@@ -544,12 +622,17 @@ function draw() {
   grid();
   updatePlanScale();
   if (view==='original') {
+    const exterior=project.original && siteExterior(project.original);
+    paintExterior(exterior);
     paintOriginal(false);
     if (project.original) paintSurveyDimensions(project.original);
+    paintExteriorDimensions(exterior);
     return;
   }
   const drawing = wallGroupDrag?.change || wallDrag?.change || project;
   if (drawing===project) paintFootprint();
+  const exterior=siteExterior(drawing);
+  paintExterior(exterior);
   const interiors=interiorLayout(drawing);
   paintRoomFloors(interiors.rooms);
   if (showOriginal) paintOriginal(true);
@@ -571,6 +654,7 @@ function draw() {
     wallMeasure({a:{x:box.x,y:box.y+box.depth},b:{x:box.x,y:box.y}},23);
   }
   if (drawing===project && tool==='select') paintSurveyDimensions(project);
+  paintExteriorDimensions(exterior);
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
       const ghost = { id:'preview-wall',a:start,b:hover,thickness:placementThickness() };
@@ -1304,7 +1388,7 @@ function refresh() {
   eye.title=showOriginal ? 'Ocultar planta original' : 'Mostrar planta original';
   $('survey-notes').hidden=view==='model' || !visibleProject ||
     (visibleProject.template!=='survey' && !livingWindowDimensions(visibleProject).length &&
-      !kitchenWindowDimensions(visibleProject).length);
+      !kitchenWindowDimensions(visibleProject).length && !siteExterior(visibleProject));
   $('orientation').hidden=view==='model';
   $('scale-bar').hidden=view==='model';
   $('empty').hidden=project.walls.length>0 || !isPlan || tool!=='select';
