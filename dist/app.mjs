@@ -1,5 +1,6 @@
-import { interiorLayout } from './interior-layout.mjs';
-import { livingRoomFurniture } from './living-room.mjs';
+import { furnitureFootprint, furnitureNames, furnitureTarget } from './furniture-position.mjs';
+import { interiorLayout } from './interior-layout.mjs?v=20261122-moveis';
+import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
@@ -19,7 +20,7 @@ const defaultKitchenPhoto=new URL('./assets/vista-cozinha.webp',import.meta.url)
 const unit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const preciseUnit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 const tools = {
-  select: ['Selecionar', 'Clique para selecionar. Shift + clique seleciona várias paredes.'],
+  select: ['Selecionar', 'Toque ou clique para selecionar. Arraste para mover móveis.'],
   wall: ['Parede', 'Clique no início e depois no fim de cada parede. Esc encerra.'],
   door: ['Porta', 'Clique sobre uma parede para encaixar a porta.'],
   window: ['Janela', 'Clique sobre uma parede para encaixar a janela.'],
@@ -58,6 +59,7 @@ let start = null;
 let hover = null;
 let preview = null;
 let dragging = null;
+let furnitureDrag=null;
 let wallDrag = null;
 let wallGroupDrag = null;
 let openingDrag = null;
@@ -158,7 +160,7 @@ function setSelection(item, toggle=false) {
 function resetSelection() {
   setSelection(null);
   multiSelect=false;
-  dragging=wallDrag=openingDrag=wallGroupDrag=null;
+  dragging=wallDrag=openingDrag=wallGroupDrag=furnitureDrag=null;
 }
 
 function history(from, to) {
@@ -408,18 +410,36 @@ function paintRoomFloors(rooms) {
   context.restore();
 }
 
+function furniturePreview(item) {
+  return furnitureDrag?.item.id===item.id && furnitureDrag.next ? {...item,...furnitureDrag.next} : item;
+}
+
+function furnitureAt(position) {
+  const {items}=interiorLayout(project);
+  const living=livingRoomFurniture(project);
+  if (living) items.push(living.sofa,living.tv);
+  return items.reverse().find(item=>{
+    const {halfX,halfY}=furnitureFootprint(item);
+    const margin=Math.max(.025,4/camera.scale);
+    return Math.abs(item.x-position.x)<=halfX+margin && Math.abs(item.y-position.y)<=halfY+margin;
+  });
+}
+
 function paintRoomItems(rooms,items) {
   context.save();
-  for (const item of items) {
-    if (!item.blocks) continue;
+  for (const entry of items) {
+    const item=furniturePreview(entry);
     const p=screen(item);
     const w=item.width*camera.scale, d=item.depth*camera.scale;
     context.save();
     context.translate(p.x,p.y);
     context.rotate(item.rotation*Math.PI/2);
     context.fillStyle=item.kind==='bed' ? '#c99aa7' : item.kind==='table' ? '#8b7c6b' : '#f4ecdf';
-    context.strokeStyle='#766c5f';
-    context.fillRect(-w/2,-d/2,w,d);
+    const active=selected?.id===item.id;
+    context.strokeStyle=active ? '#147d67' : '#766c5f';
+    context.lineWidth=active ? 2 : 1;
+    if (item.blocks || item.kind==='chair') context.fillRect(-w/2,-d/2,w,d);
+    if (!item.blocks && item.kind!=='chair') context.setLineDash([3,2]);
     context.strokeRect(-w/2,-d/2,w,d);
     context.restore();
   }
@@ -441,14 +461,15 @@ function paintRoomItems(rooms,items) {
 function paintLivingRoom(drawing) {
   const furniture=livingRoomFurniture(drawing);
   if (!furniture) return;
-  const {sofa,tv}=furniture;
+  const sofa=furniturePreview(furniture.sofa), tv=furniturePreview(furniture.tv);
   const a=screen({x:sofa.x-sofa.width/2,y:sofa.y-sofa.depth/2});
   const b=screen({x:sofa.x+sofa.width/2,y:sofa.y+sofa.depth/2});
   const tvLeft=screen({x:tv.x-tv.width/2,y:tv.y});
   const tvRight=screen({x:tv.x+tv.width/2,y:tv.y});
   context.save();
   context.fillStyle='#a6ad92';
-  context.strokeStyle='#586450';
+  context.strokeStyle=selected?.id===sofa.id ? '#147d67' : '#586450';
+  context.lineWidth=selected?.id===sofa.id ? 2 : 1;
   context.lineWidth=1;
   context.beginPath();
   context.roundRect(a.x,a.y,b.x-a.x,b.y-a.y,3);
@@ -458,8 +479,10 @@ function paintLivingRoom(drawing) {
   const seat=(b.x-a.x)*.37;
   context.fillRect(a.x+seat*.24,a.y+3,seat,(b.y-a.y)*.69);
   context.fillRect(b.x-seat*1.24,a.y+3,seat,(b.y-a.y)*.69);
-  context.fillStyle='#293437';
-  context.fillRect(tvLeft.x,tvLeft.y-2,tvRight.x-tvLeft.x,4);
+  const active=selected?.id===tv.id;
+  context.fillStyle=active ? '#147d67' : '#293437';
+  const height=active ? 6 : 4;
+  context.fillRect(tvLeft.x,tvLeft.y-height/2,tvRight.x-tvLeft.x,height);
   context.restore();
 }
 
@@ -687,6 +710,14 @@ function selectOnPlan(event,p,position) {
     capture();
     return;
   }
+  const furniture=event.shiftKey || multiSelect ? null : furnitureAt(position);
+  if (furniture) {
+    setSelection({id:furniture.id,type:'furniture',name:furnitureNames[furniture.kind]});
+    furnitureDrag={item:furniture,origin:p,next:null};
+    capture();
+    refresh();
+    return;
+  }
   const wall=hitWall(position);
   const dragSelection=selectedWalls.size>1 && wall && selectedWalls.has(wall.id);
   const item=event.shiftKey || multiSelect || dragSelection ? wall : hitTest(position);
@@ -719,7 +750,13 @@ function selectOnPlan(event,p,position) {
 plan.addEventListener('pointermove', event => {
   const p = coordinate(event);
   if (view==='original' && !dragging) return;
-  if (wallGroupDrag) {
+  if (furnitureDrag) {
+    const {item,origin}=furnitureDrag;
+    const target={x:item.x+(p.x-origin.x)/camera.scale,y:item.y+(p.y-origin.y)/camera.scale};
+    const next=distance(p,origin)<2 ? null : furnitureTarget(project,item,target);
+    furnitureDrag.next=next;
+    setHint(next ? 'Solte para mover '+furnitureNames[item.kind]+'.' : 'Arraste o móvel para um espaço livre de paredes.');
+  } else if (wallGroupDrag) {
     const {origin,ids}=wallGroupDrag;
     if (distance(p,origin)<2) {
       wallGroupDrag.change=null;
@@ -757,7 +794,7 @@ plan.addEventListener('pointermove', event => {
     const pos = world(p);
     if (tool==='measure') measureHover=measurementTarget(pos,event.shiftKey);
     if (tool==='select') {
-      const hit=multiSelect ? hitWall(pos) : hitTest(pos);
+      const hit=multiSelect ? hitWall(pos) : furnitureAt(pos) || hitTest(pos);
       plan.style.cursor=hit || endpointAt(pos) ? 'grab' : 'default';
     }
     hover = tool === 'wall' ? snap(pos,event.shiftKey) : null;
@@ -770,9 +807,12 @@ function endDrag(event) {
   const change=group?.change ?? wallDrag?.change;
   const previous=openingDrag?.opening;
   const next=openingDrag?.next;
-  dragging=wallDrag=openingDrag=wallGroupDrag=null;
+  const furniture=furnitureDrag;
+  dragging=wallDrag=openingDrag=wallGroupDrag=furnitureDrag=null;
   cursor();
-  if (event.type==='pointerup' && change) {
+  if (event.type==='pointerup' && furniture?.next && distance(furniture.item,furniture.next)>.000001) {
+    commit(() => { project.furniturePositions={...project.furniturePositions,[furniture.item.id]:furniture.next}; });
+  } else if (event.type==='pointerup' && change) {
     commit(() => { project.walls=change.walls; project.openings=change.openings; },{structure:true});
   } else if (event.type==='pointerup' && group && multiSelect && !group.moved) {
     setSelection(group.item,true);
@@ -784,7 +824,7 @@ function endDrag(event) {
 }
 plan.addEventListener('pointerup',endDrag);
 plan.addEventListener('pointercancel',endDrag);
-plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !openingDrag && !wallGroupDrag) { hover=preview=measureHover=null; draw(); } });
+plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !openingDrag && !wallGroupDrag && !furnitureDrag) { hover=preview=measureHover=null; draw(); } });
 plan.addEventListener('wheel',event => { event.preventDefault(); zoomPlan(Math.exp(-event.deltaY*.001),coordinate(event)); },{passive:false});
 plan.addEventListener('contextmenu',event => event.preventDefault());
 
@@ -1218,7 +1258,7 @@ function applyField(item, element) {
 }
 
 function remove() {
-  if (!selected || selectedWalls.size>1 || view!=='plan') return;
+  if (!selected || selected.type==='furniture' || selectedWalls.size>1 || view!=='plan') return;
   const {id,type} = selected;
   setSelection(null);
   commit(() => {
@@ -1246,7 +1286,9 @@ function refresh() {
     else if (selectedWalls.size>1) hint='Arraste uma das paredes selecionadas. Shift + clique adiciona ou remove trechos.';
     else hint='Arraste o corpo para mover ou uma ponta para esticar. Shift + clique seleciona mais paredes.';
   }
-  if (tool==='select' && selected && selected.type!=='wall') hint='Arraste o item para outro trecho de parede.';
+  if (tool==='select' && selected && selected.type!=='wall') hint=selected.type==='furniture'
+    ? selected.name+' selecionado. Arraste para mudar a posição.'
+    : 'Arraste o item para outro trecho de parede.';
   if (isOriginal) setHint(project.original ? 'Arraste para navegar pela planta original.' : 'Salve a planta 2D atual como referência da reforma.');
   else setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
@@ -1385,7 +1427,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-interiores');
+    const { createModel }=await import('./model.mjs?v=20261122-moveis');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
@@ -1608,7 +1650,7 @@ refresh();
 sync = startSync({
   getProject: () => project,
   applyRemote,
-  isBusy: () => Boolean(start || dragging || wallDrag || wallGroupDrag || openingDrag || measureStart || $('new-dialog').open || $('survey-dialog').open || document.activeElement?.matches('input,select,textarea')),
+  isBusy: () => Boolean(start || dragging || wallDrag || wallGroupDrag || openingDrag || furnitureDrag || measureStart || $('new-dialog').open || $('survey-dialog').open || document.activeElement?.matches('input,select,textarea')),
   status: syncStatus
 });
 $('share').onclick = async () => {

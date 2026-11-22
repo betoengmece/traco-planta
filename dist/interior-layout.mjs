@@ -1,3 +1,5 @@
+import { positionedFurniture } from './furniture-position.mjs';
+
 // The photographed rooms are located by the adjoining walls and window in the survey.
 export function interiorLayout(project) {
   const walls=new Map(project.walls.map(wall=>[wall.id,wall]));
@@ -22,7 +24,12 @@ export function interiorLayout(project) {
     const halfX=(crossed ? depth : width)/2;
     const halfY=(crossed ? width : depth)/2;
     if (x-halfX<room.left || x+halfX>room.right || y-halfY<room.top || y+halfY>room.bottom) return;
-    items.push({kind,x,y,width,depth,rotation,blocks});
+    const slide=kind==='wallCabinet'
+      ? {axis:'y',min:room.top+halfY+.10,max:room.bottom-halfY-.10}
+      : kind==='shelves'
+        ? {axis:'x',min:room.left+halfX+.10,max:room.right-halfX-.10}
+        : null;
+    items.push(positionedFurniture(project,{id:room.name+':'+kind,kind,x,y,width,depth,rotation,blocks,slide}));
   }
 
   const kitchenWall=vertical('right-main');
