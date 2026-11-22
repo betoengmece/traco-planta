@@ -2,7 +2,9 @@ import * as THREE from 'three';
 
 const tones={
   terracotta:[143,89,56],grayTile:[158,156,148],parquet:[148,103,66],
-  neutral:[177,159,132],slats:[227,222,209],panels:[221,215,201]
+  neutral:[177,159,132],slats:[227,222,209],panels:[221,215,201],
+  garageTile:[158,74,55],paving:[137,130,121],path:[145,110,97],grass:[104,126,80],
+  bathPattern:[131,75,48],bathClay:[138,92,71],bathBlue:[155,193,193],bathCream:[225,203,145]
 };
 function finishTexture(kind) {
   const size=128;
@@ -25,6 +27,15 @@ function finishTexture(kind) {
         shade=kind==='grayTile'
           ? (seam ? -44 : Math.sin(24*a+Math.sin(b*16)*2)*6+Math.cos(17*b)*5)
           : (seam ? 21 : Math.abs(Math.abs(a-.5)+Math.abs(b-.5)-.44)<.023 ? 19 : 0);
+      } else if (['garageTile','bathClay','bathBlue','bathCream','bathPattern'].includes(kind)) {
+        const a=u*3%1,b=v*3%1;
+        const seam=Math.min(a,b,1-a,1-b)<.028;
+        const dx=a-.5,dy=b-.5;
+        const ring=Math.hypot(dx,dy);
+        const petal=.23+Math.cos(Math.atan2(dy,dx)*8)*.066;
+        shade=seam ? 22 : kind==='bathPattern' && (Math.abs(ring-petal)<.023 || Math.abs(ring-.39)<.012) ? 32 : 0;
+      } else if (kind==='paving'||kind==='path'||kind==='grass') {
+        shade=Math.sin(x*2.71+y*6.57)*3+Math.sin(x*.49+y*.73)*4;
       } else if (kind==='slats') shade=u*9%1<.073 ? -20 : 0;
       else if (kind==='panels') shade=u<.014 || v<.014 ? -19 : 0;
       const index=(y*size+x)*4;
@@ -47,6 +58,14 @@ export function makeInterior() {
   const paint=(color,roughness=.85,metalness=0)=>new THREE.MeshStandardMaterial({color,roughness,metalness});
   const white=paint('#e4e0d2'), oak=paint('#b08b64'), walnut=paint('#604633');
   const dark=paint('#272724'), granite=paint('#494740',.64), steel=paint('#9da7a6',.30,.62);
+  const ceramic=paint('#f1ead8',.38),drain=paint('#575447',.40),mirror=paint('#aab9b9',.16,.52);
+  const basin=new THREE.LatheGeometry([
+    new THREE.Vector2(0,-.060),new THREE.Vector2(.22,-.060),
+    new THREE.Vector2(.40,-.028),new THREE.Vector2(.474,.040),
+    new THREE.Vector2(.50,.052),new THREE.Vector2(.493,.015),
+    new THREE.Vector2(.46,-.081),new THREE.Vector2(.27,-.115),new THREE.Vector2(0,-.115)
+  ],24);
+  const oval=new THREE.SphereGeometry(1,18,12);
   const duvet=paint('#c997a7'), linen=paint('#e5d8d3');
   const bookColors=['#9c5141','#777c46','#c2a383','#536c78','#9e7643'].map(color=>paint(color));
 
@@ -82,6 +101,14 @@ export function makeInterior() {
     const {width:w,depth:d}=spec;
     const add=(x,y,z,width,height,depth,material)=>solid(group,x,y,z,width,height,depth,material);
     const front=d/2;
+    function ceramicPiece(geometry,x,y,z,width,height,depth,material=ceramic) {
+      const mesh=new THREE.Mesh(geometry,material);
+      mesh.position.set(x,y,z);
+      mesh.scale.set(width,height,depth);
+      mesh.castShadow=true;
+      mesh.receiveShadow=true;
+      group.add(mesh);
+    }
     function handle(x,y,z,wide=.10) { add(x,y,z,wide,.018,.018,steel); }
     function legs(height,material) {
       for(const x of [-1,1]) for(const z of [-1,1])
@@ -172,6 +199,23 @@ export function makeInterior() {
           add(.015,.965,0,.31,.07,.15,white);
         }
         break;
+      case 'toilet':
+        ceramicPiece(oval,0,.15,.02,w*.29,.15,d*.27);
+        ceramicPiece(basin,0,.389,.037,w,1.36,d*.72);
+        ceramicPiece(oval,0,.325,.04,.034,.006,.033,drain);
+        break;
+      case 'bathSink':
+        ceramicPiece(oval,0,.40,-.042,w*.16,.39,d*.18);
+        ceramicPiece(basin,0,.822,0,w,1,d);
+        add(0,.913,-front+.06,.019,.15,.02,steel);
+        add(0,.977,-front+.095,.020,.022,.085,steel);
+        add(0,1.40,-front+.015,w*.91,.51,.024,ceramic);
+        add(0,1.40,-front+.029,w*.82,.455,.006,mirror);
+        break;
+      case 'cistern':
+        add(0,1.99,0,w,.33,d,ceramic);
+        add(0,1.129,0,.042,1.47,.042,ceramic);
+        break;
       case 'shelves':
         for(const y of [1.12,1.60]) {
           add(0,y,0,w,.034,d,oak);
@@ -185,5 +229,5 @@ export function makeInterior() {
     }
     return group;
   }
-  return {roomSurface,furnishing};
+  return {roomSurface,furnishing,finish};
 }

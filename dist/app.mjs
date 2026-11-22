@@ -1,6 +1,6 @@
 import { siteExterior } from './site-exterior.mjs';
-import { furnitureFootprint, furnitureNames, furnitureTarget } from './furniture-position.mjs';
-import { interiorLayout } from './interior-layout.mjs?v=20261122-moveis';
+import { furnitureFootprint, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261122-banheiros';
+import { interiorLayout } from './interior-layout.mjs?v=20261122-banheiros';
 import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
@@ -404,7 +404,7 @@ function setMeasurementPoint(position,orthogonal) {
   draw();
 }
 
-const finishFills={terracotta:'#d9a681',grayTile:'#dfded6',parquet:'#d3b38e',neutral:'#e4d8c3'};
+const finishFills={terracotta:'#d9a681',grayTile:'#dfded6',parquet:'#d3b38e',neutral:'#e4d8c3',bathPattern:'#bd8b67',bathClay:'#bd9681'};
 function paintRoomFloors(rooms) {
   context.save();
   for (const room of rooms) {
@@ -1416,6 +1416,7 @@ function updateModelControls() {
   const kitchen=visible && model.hasKitchenView;
   $('model-controls').hidden=!visible;
   $('kitchen-view').hidden=!kitchen;
+  $('garage-view').hidden=!visible || !model.hasExterior;
   $('pick-kitchen-photo').hidden=!kitchen;
   if (!kitchen) $('kitchen-photo-status').hidden=true;
   $('walk-directions').hidden=!walking;
@@ -1511,7 +1512,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-moveis');
+    const { createModel }=await import('./model.mjs?v=20261122-banheiros');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
@@ -1536,6 +1537,7 @@ $('plan-button').onclick=() => setView('plan');
 $('model-button').onclick=() => setView('model');
 $('walk-view').onclick=() => changeWalkMode(!model?.walking);
 $('kitchen-view').onclick=() => changeWalkMode(true,true);
+$('garage-view').onclick=() => changeWalkMode(true,'garage');
 $('pick-kitchen-photo').onclick=() => $('kitchen-photo').click();
 $('kitchen-photo').onchange=async event => {
   const input=event.currentTarget;
@@ -1643,10 +1645,10 @@ function clearWalkInput() {
   syncWalkInput();
 }
 
-function changeWalkMode(active, kitchen=false) {
+function changeWalkMode(active, destination=false) {
   if (view!=='model' || !model) return;
   clearWalkInput();
-  model.setWalking(active,kitchen);
+  model.setWalking(active,destination);
   updateModelControls();
 }
 

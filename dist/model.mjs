@@ -7,10 +7,16 @@ import { surveyOutline } from './survey.mjs?v=20261122-janela-cozinha';
 import { canStand, eyeHeight, walkBarriers, walkSpawn, walkStep } from './walk.mjs';
 import { createGardenView } from './garden-view.mjs';
 import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
-import { interiorLayout } from './interior-layout.mjs?v=20261122-moveis';
-import { makeInterior } from './interior-model.mjs';
+import { interiorLayout } from './interior-layout.mjs?v=20261122-banheiros';
+import { makeInterior } from './interior-model.mjs?v=20261122-banheiros';
+import { siteExterior } from './site-exterior.mjs';
+import { makeExterior } from './exterior-model.mjs';
 
 const observerDistance=2.10;
+const bathTiles={
+  bathPattern:{finish:'bathCream',height:1.15,walls:['strip-side','right-strip','strip-top','rear-entry']},
+  bathClay:{finish:'bathBlue',height:1.10,walls:['annex-upper','annex-lower','right-annex','annex-top','annex-bottom']}
+};
 
 export function createModel(host, onZoom) {
   const scene = new THREE.Scene();
@@ -63,6 +69,8 @@ export function createModel(host, onZoom) {
   background.receiveShadow=true;
   scene.add(background);
   let box = null;
+  let houseBox = null;
+  let exterior = null;
   let grid = null;
   let frame = 0;
   let frameSpan = 10;
@@ -76,6 +84,7 @@ export function createModel(host, onZoom) {
   let previousFrame=null;
   const garden=createGardenView();
   const interior=makeInterior();
+  const exteriorModel=makeExterior(interior);
   const ceiling=new THREE.Group();
   const finishes=new THREE.Group();
   const upholstery=new THREE.MeshStandardMaterial({color:'#a6ad92',roughness:.97});
@@ -139,7 +148,7 @@ export function createModel(host, onZoom) {
       eyeCamera.position.copy(position);
       eyeCamera.lookAt(kitchenStart.target);
     } else {
-      const spawn=walkSpawn(box,barriers);
+      const spawn=walkSpawn(houseBox,barriers);
       eyeCamera.position.set(spawn.x,eyeHeight,spawn.y);
       if (atKitchen && kitchenStart) eyeCamera.lookAt(kitchenStart.target);
       else eyeCamera.rotation.set(0,0,0);
@@ -147,10 +156,15 @@ export function createModel(host, onZoom) {
     hasWalkPosition=true;
   }
 
-  function setWalking(active, atKitchen=false) {
+  function setWalking(active, destination=false) {
     if (!box) return;
-    if (active && (atKitchen || !hasWalkPosition)) {
-      placeWalker(Boolean(kitchenStart));
+    if (active && (destination || !hasWalkPosition)) {
+      if (destination==='garage' && exterior) {
+        const {garageStart,garageTarget}=exterior;
+        eyeCamera.position.set(garageStart.x,eyeHeight,garageStart.y);
+        eyeCamera.lookAt(garageTarget.x,eyeHeight,garageTarget.y);
+        hasWalkPosition=true;
+      } else placeWalker(Boolean(kitchenStart));
       eyeCamera.zoom=1;
       eyeCamera.updateProjectionMatrix();
     }
@@ -213,6 +227,52 @@ export function createModel(host, onZoom) {
     barriers.push({x:sofa.x,y:sofa.y,ux:1,uy:0,half:sofa.depth/2,start:-sofa.width/2,end:sofa.width/2});
   }
 
+  function addBathroomTiles(project,room,tiles) {
+    const cx=(room.left+room.right)/2;
+    const cy=(room.top+room.bottom)/2;
+    for (const wall of project.walls.filter(wall=>tiles.walls.includes(wall.id))) {
+      const angle=heading(wall);
+      const ux=Math.cos(angle),uy=Math.sin(angle);
+      const sign=Math.sign((cy-wall.a.y)*ux-(cx-wall.a.x)*uy);
+      const height=Math.min(tiles.height,wall.height);
+      const depth=sign*(wall.thickness/2+.002);
+      const projectAlong=(x,y)=>(x-wall.a.x)*ux+(y-wall.a.y)*uy;
+      const corners=[projectAlong(room.left,room.top),projectAlong(room.right,room.top),
+        projectAlong(room.left,room.bottom),projectAlong(room.right,room.bottom)];
+      const startAt=Math.max(0,Math.min(...corners));
+      const endAt=Math.min(length(wall),Math.max(...corners));
+      const holes=project.openings.filter(opening=>opening.wallId===wall.id && opening.sill<height)
+        .map(opening=>({opening,span:interval(opening,wall)}))
+        .sort((a,b)=>a.span[0]-b.span[0]);
+      function panel(from,to,bottom,top) {
+        from=Math.max(from,startAt);
+        to=Math.min(to,endAt);
+        if (to<=from || top<=bottom) return;
+        const width=to-from,span=top-bottom;
+        const center=(from+to)/2;
+        const geometry=new THREE.PlaneGeometry(width,span);
+        const uv=geometry.attributes.uv;
+        for (let i=0;i<uv.count;i++) {
+          uv.setXY(i,(sign>0 ? from : -to)+uv.getX(i)*width,bottom+uv.getY(i)*span);
+        }
+        const mesh=new THREE.Mesh(geometry,interior.finish(tiles.finish));
+        mesh.name='Azulejos do '+room.name.toLowerCase();
+        mesh.position.set(wall.a.x+ux*center-uy*depth,(bottom+top)/2,wall.a.y+uy*center+ux*depth);
+        mesh.rotation.y=-angle+(sign<0 ? Math.PI : 0);
+        mesh.receiveShadow=true;
+        finishes.add(mesh);
+      }
+      let from=startAt;
+      for (const {opening,span:[start,end]} of holes) {
+        panel(from,start,0,height);
+        panel(start,end,0,opening.sill);
+        panel(start,end,opening.sill+opening.height,height);
+        from=end;
+      }
+      panel(from,endAt,0,height);
+    }
+  }
+
   function addInteriors(project) {
     for (const group of [ceiling,finishes]) {
       for (const surface of group.children) surface.geometry.dispose();
@@ -223,6 +283,7 @@ export function createModel(host, onZoom) {
     for (const room of rooms) {
       finishes.add(interior.roomSurface(room,false));
       ceiling.add(interior.roomSurface(room,true));
+      if (Object.hasOwn(bathTiles,room.finish)) addBathroomTiles(project,room,bathTiles[room.finish]);
     }
     for (const item of items) {
       assembly.add(interior.furnishing(item,solid));
@@ -298,7 +359,10 @@ export function createModel(host, onZoom) {
   }
 
   function setProject(project) {
-    box=bounds(project);
+    houseBox=bounds(project);
+    box=houseBox;
+    exterior?.group.traverse(mesh=>{ if (mesh.userData.exteriorSurface) mesh.geometry.dispose(); });
+    exterior=null;
     garden.mesh.removeFromParent();
     assembly.clear();
     kitchenStart=null;
@@ -309,6 +373,13 @@ export function createModel(host, onZoom) {
       addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls,kitchenWindow));
     addLivingRoom(project);
     addInteriors(project);
+    const site=siteExterior(project);
+    if (site) {
+      exterior=exteriorModel.create(site,houseBox,project.walls.find(wall=>wall.id==='bottom-left'));
+      assembly.add(exterior.group);
+      barriers.push(...exterior.barriers);
+      box=exterior.bounds;
+    }
     const {x,z}=eyeCamera.position;
     const outside=x<box.x-2 || x>box.x+box.width+2 || z<box.y-2 || z>box.y+box.depth+2;
     if ((hasWalkPosition && (outside || !canStand(x,z,barriers))) || (!hasWalkPosition && kitchenStart)) {
@@ -387,6 +458,7 @@ export function createModel(host, onZoom) {
   return {
     setProject, fit, resize, setWalking, lookWalk, setKitchenPhoto: garden.setPhoto,
     setWalkInput(nextForward,nextSideways) { forward=nextForward; sideways=nextSideways; },
+    get hasExterior() { return Boolean(exterior); },
     get hasKitchenView() { return Boolean(kitchenStart); },
     get walking() { return walking; },
     get zoom() { return walking ? eyeCamera.zoom : camera.zoom; },

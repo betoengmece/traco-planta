@@ -35,5 +35,6 @@ export const furnitureNames={
   sofa:'Sofá',tv:'TV',sink:'Pia',stove:'Fogão',fridge:'Geladeira',
   table:'Mesa',chair:'Cadeira',wallCabinet:'Armário aéreo',cabinet:'Armário',
   bed:'Cama',nightstand:'Criado-mudo',dresser:'Cômoda',wardrobe:'Guarda-roupa',
+  toilet:'Vaso sanitário',bathSink:'Lavatório',cistern:'Caixa de descarga',
   desk:'Escrivaninha',wardrobeWhite:'Armário branco',shelves:'Prateleiras',sewing:'Mesa de costura'
 };

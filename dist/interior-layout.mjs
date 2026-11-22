@@ -45,7 +45,7 @@ export function interiorLayout(project) {
       const counterY=Math.min(bottom-1.32,Math.max(top+.82,windowY));
       item('sink',kitchen,right-.40,counterY,1.36,.60,3);
       item('stove',kitchen,right-.40,counterY+1.03,.56,.60,3);
-      item('fridge',kitchen,right-1.25,top+.43,.65,.65);
+      item('fridge',kitchen,right-1.52,top+.43,.65,.65);
       item('table',kitchen,left+.53,(top+bottom)/2,1.04,.72,1);
       item('chair',kitchen,left+.55,(top+bottom)/2-.73,.38,.39,2,false);
       item('wallCabinet',kitchen,left+.30,(top+bottom)/2,1.26,.34,1,false);
@@ -85,6 +85,31 @@ export function interiorLayout(project) {
       item('wardrobeWhite',storage,left+1.30,bottom-.31,1.32,.45);
       item('shelves',storage,left+1.35,top+.20,1.73,.25,2,false);
       item('sewing',storage,right-.39,top+.46,.66,.43,3);
+    }
+  }
+
+  const bathSide=vertical('strip-side');
+  const bathEnd=horizontal('rear-entry');
+  const bathOutside=vertical('right-strip');
+  if (bathSide && bathOutside && kitchenBottom && bathEnd) {
+    const bath=room('Banheiro',bathSide.a.x,bathOutside.a.x,kitchenBottom.a.y,bathEnd.a.y,'bathPattern','slats',false);
+    if (bath && bath.right-bath.left>=1.8 && bath.bottom-bath.top>=1.25) {
+      const {left,right,top}=bath;
+      const toiletX=right-.75;
+      item('toilet',bath,toiletX,top+.35,.38,.55);
+      item('bathSink',bath,left+.60,top+.29,.47,.38);
+      item('cistern',bath,toiletX,top+.145,.36,.14,0,false);
+    }
+  }
+  const rearBathSide=vertical('annex-upper');
+  const rearBathOutside=vertical('right-annex');
+  const rearBathBack=horizontal('annex-top');
+  if (rearBathSide && rearBathOutside && rearBathBack && kitchenTop) {
+    const bath=room('Banheiro dos fundos',rearBathSide.a.x,rearBathOutside.a.x,rearBathBack.a.y,kitchenTop.a.y,'bathClay','panels',false);
+    if (bath && bath.right-bath.left>=1.18 && bath.bottom-bath.top>=1.33) {
+      const {right,top,bottom}=bath;
+      item('toilet',bath,right-.35,Math.min(bottom-.64,top+1.16),.36,.53,3);
+      item('bathSink',bath,right-.30,top+.45,.40,.36,3);
     }
   }
 
