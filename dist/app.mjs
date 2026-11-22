@@ -1,3 +1,4 @@
+import { livingRoomFurniture } from './living-room.mjs';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
@@ -394,6 +395,31 @@ function setMeasurementPoint(position,orthogonal) {
   draw();
 }
 
+function paintLivingRoom(drawing) {
+  const furniture=livingRoomFurniture(drawing);
+  if (!furniture) return;
+  const {sofa,tv}=furniture;
+  const a=screen({x:sofa.x-sofa.width/2,y:sofa.y-sofa.depth/2});
+  const b=screen({x:sofa.x+sofa.width/2,y:sofa.y+sofa.depth/2});
+  const tvLeft=screen({x:tv.x-tv.width/2,y:tv.y});
+  const tvRight=screen({x:tv.x+tv.width/2,y:tv.y});
+  context.save();
+  context.fillStyle='#a6ad92';
+  context.strokeStyle='#586450';
+  context.lineWidth=1;
+  context.beginPath();
+  context.roundRect(a.x,a.y,b.x-a.x,b.y-a.y,3);
+  context.fill();
+  context.stroke();
+  context.fillStyle='#bfc5af';
+  const seat=(b.x-a.x)*.37;
+  context.fillRect(a.x+seat*.24,a.y+3,seat,(b.y-a.y)*.69);
+  context.fillRect(b.x-seat*1.24,a.y+3,seat,(b.y-a.y)*.69);
+  context.fillStyle='#293437';
+  context.fillRect(tvLeft.x,tvLeft.y-2,tvRight.x-tvLeft.x,4);
+  context.restore();
+}
+
 function paintSurveyDimensions(visibleProject) {
   const fullSurvey=visibleProject.template==='survey';
   const windowDimensions=livingWindowDimensions(visibleProject);
@@ -461,6 +487,7 @@ function draw() {
     const position = openingDrag?.next?.id===opening.id ? openingDrag.next : opening;
     paintOpening(position,false,drawing.walls);
   });
+  paintLivingRoom(drawing);
   const selectedWall = selectedWalls.size===1 ? drawing.walls.find(wall => selectedWalls.has(wall.id)) : null;
   if (selectedWall) {
     wallMeasure(selectedWall);
@@ -1257,7 +1284,7 @@ async function loadKitchenPhoto(url) {
   const image=new Image();
   image.src=url;
   await image.decode();
-  model.setKitchenPhoto(image);
+  model.setKitchenPhoto(image,url===defaultKitchenPhoto);
   $('pick-kitchen-photo').textContent='Trocar foto da janela';
 }
 
@@ -1308,7 +1335,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-andar');
+    const { createModel }=await import('./model.mjs?v=20261122-paralaxe');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });

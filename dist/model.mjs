@@ -5,6 +5,8 @@ import { houseOutline } from './template.mjs';
 import { surveyOutline } from './survey.mjs?v=20261122-sala';
 
 import { canStand, eyeHeight, walkBarriers, walkSpawn, walkStep } from './walk.mjs';
+import { createGardenView } from './garden-view.mjs';
+import { livingRoomFurniture } from './living-room.mjs';
 
 const observerDistance=2.10;
 
@@ -70,9 +72,12 @@ export function createModel(host, onZoom) {
   let forward=0;
   let sideways=0;
   let previousFrame=null;
-  const photoMaterial=new THREE.MeshBasicMaterial({toneMapped:false,polygonOffset:true,polygonOffsetFactor:1});
-  const backdrop=new THREE.Mesh(new THREE.PlaneGeometry(1,1),photoMaterial);
-  backdrop.visible=false;
+  const garden=createGardenView();
+  const upholstery=new THREE.MeshStandardMaterial({color:'#a6ad92',roughness:.97});
+  const cushion=new THREE.MeshStandardMaterial({color:'#b7bea4',roughness:.97});
+  const feet=new THREE.MeshStandardMaterial({color:'#6e4e36',roughness:.8});
+  const tvFrame=new THREE.MeshStandardMaterial({color:'#252c2c',roughness:.71});
+  const screen=new THREE.MeshStandardMaterial({color:'#121a20',roughness:.28,metalness:.18});
   const observer=createObserver();
   scene.add(observer);
 
@@ -105,36 +110,12 @@ export function createModel(host, onZoom) {
     return figure;
   }
 
-  function frameKitchenPhoto() {
-    const photo=photoMaterial.map;
-    if (!photo?.image) return;
-    const sourceAspect=photo.image.width/photo.image.height;
-    const openingAspect=backdrop.scale.x/backdrop.scale.y;
-    const x=Math.min(1,openingAspect/sourceAspect);
-    const y=Math.min(1,sourceAspect/openingAspect);
-    photo.repeat.set(x,y);
-    photo.offset.set((1-x)/2,(1-y)/2);
-    backdrop.visible=true;
-  }
-
-  function setKitchenPhoto(image) {
-    photoMaterial.map?.dispose();
-    const photo=new THREE.Texture(image);
-    photo.colorSpace=THREE.SRGBColorSpace;
-    photo.needsUpdate=true;
-    photoMaterial.map=photo;
-    photoMaterial.needsUpdate=true;
-    frameKitchenPhoto();
-  }
-
   function addKitchenView(group, opening, wall, center) {
     const z=wall.thickness/2;
     const height=opening.sill+opening.height/2;
-    // The inside of the right wall is local +Z. The picture faces it from outside.
-    backdrop.position.set(center,height,-z-.018);
-    backdrop.scale.set(opening.width+.11,opening.height+.11,1);
-    group.add(backdrop);
-    frameKitchenPhoto();
+    garden.mesh.position.set(center,height,-z-.018);
+    group.add(garden.mesh);
+    garden.setOpening(opening.width,opening.height,eyeHeight-height,observerDistance+wall.thickness+.018);
     kitchenStart={
       position:group.localToWorld(new THREE.Vector3(center,eyeHeight,z+observerDistance)),
       target:group.localToWorld(new THREE.Vector3(center,height,0))
@@ -203,6 +184,29 @@ export function createModel(host, onZoom) {
     parent.add(mesh);
   }
 
+  function addLivingRoom(project) {
+    const furniture=livingRoomFurniture(project);
+    if (!furniture) return;
+    const {sofa,tv}=furniture;
+    const group=new THREE.Group();
+    group.name='Sala com sofá e TV de 50 polegadas';
+    assembly.add(group);
+    const {x,y,width,depth}=sofa;
+    solid(group,x,.23,y,width,.29,depth,upholstery);
+    solid(group,x,.61,y+depth/2-.09,width,.42,.18,upholstery);
+    for (const side of [-1,1]) {
+      solid(group,x+side*(width/2-.065),.49,y,.13,.29,depth-.04,upholstery);
+      solid(group,x+side*(width/2-.12),.055,y-.30,.065,.11,.06,feet);
+      solid(group,x+side*(width/2-.12),.055,y+.30,.065,.11,.06,feet);
+      const seatWidth=(width-.30)/2;
+      solid(group,x+side*seatWidth/2,.408,y-.077,seatWidth-.013,.13,.63,cushion);
+      solid(group,x+side*seatWidth/2,.655,y+.251,seatWidth-.016,.38,.12,cushion);
+    }
+    solid(group,tv.x,tv.elevation,tv.y,tv.width+.036,tv.height+.043,.049,tvFrame);
+    solid(group,tv.x,tv.elevation,tv.y+.026,tv.width,tv.height,.007,screen);
+    barriers.push({x:sofa.x,y:sofa.y,ux:1,uy:0,half:sofa.depth/2,start:-sofa.width/2,end:sofa.width/2});
+  }
+
   function fillWall(group,start,end,bottom,top,thickness) {
     solid(group,(start+end)/2,(bottom+top)/2,0,end-start,top-bottom,thickness,mats.wall);
   }
@@ -267,7 +271,7 @@ export function createModel(host, onZoom) {
 
   function setProject(project) {
     box=bounds(project);
-    backdrop.removeFromParent();
+    garden.mesh.removeFromParent();
     assembly.clear();
     kitchenStart=null;
     barriers=walkBarriers(project);
@@ -275,6 +279,7 @@ export function createModel(host, onZoom) {
       opening.wallId==='right-main' && opening.id==='window-2' && opening.type==='window');
     project.walls.forEach(wall =>
       addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls,kitchenWindow));
+    addLivingRoom(project);
     const {x,z}=eyeCamera.position;
     const outside=x<box.x-2 || x>box.x+box.width+2 || z<box.y-2 || z>box.y+box.depth+2;
     if ((hasWalkPosition && (outside || !canStand(x,z,barriers))) || (!hasWalkPosition && kitchenStart)) {
@@ -351,7 +356,7 @@ export function createModel(host, onZoom) {
   }
 
   return {
-    setProject, fit, resize, setWalking, lookWalk, setKitchenPhoto,
+    setProject, fit, resize, setWalking, lookWalk, setKitchenPhoto: garden.setPhoto,
     setWalkInput(nextForward,nextSideways) { forward=nextForward; sideways=nextSideways; },
     get hasKitchenView() { return Boolean(kitchenStart); },
     get walking() { return walking; },
