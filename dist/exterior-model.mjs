@@ -69,7 +69,7 @@ export function makeExterior(interior) {
     floor('Corredor lateral junto à cozinha',side.kitchenFace,side.recessY,side.outer,streetFront,'path');
     floor('Faixa de jardim',side.outer,streetFront,side.outer+.62,front,'grass');
     wall('Muro baixo do corredor lateral',side.outer+.065,side.gateY,streetFront,1.12,.13,masonry);
-    if (side.drawnBathroomFace<side.bathroomFace) {
+    if (side.bathroomFace-side.drawnBathroomFace>.001) {
       const width=side.bathroomFace-side.drawnBathroomFace;
       wall('Avanço externo do banheiro dos fundos',(side.drawnBathroomFace+side.bathroomFace)/2,
         side.bathroomRear,side.recessY,2.50,width,plaster);

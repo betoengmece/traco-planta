@@ -10,7 +10,7 @@ import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
 import { interiorLayout } from './interior-layout.mjs?v=20261122-banheiros';
 import { makeInterior } from './interior-model.mjs?v=20261122-banheiros';
 import { siteExterior } from './site-exterior.mjs';
-import { makeExterior } from './exterior-model.mjs';
+import { makeExterior } from './exterior-model.mjs?v=20261122-ressalto';
 
 const observerDistance=2.10;
 const bathTiles={

@@ -506,7 +506,7 @@ function paintExterior(exterior) {
   exteriorRect(garage.left,garage.rear,garage.right,garage.front,'#eed9c9');
   exteriorRect(side.bathroomFace,side.gateY,side.outer,side.recessY,'#e5ecdb');
   exteriorRect(side.kitchenFace,side.recessY,side.outer,side.kitchenEnd,'#e5ecdb');
-  if (side.drawnBathroomFace<side.bathroomFace) {
+  if (side.bathroomFace-side.drawnBathroomFace>.001) {
     exteriorRect(side.drawnBathroomFace,side.bathroomRear,side.bathroomFace,side.recessY,'#ece0cf');
   }
   context.strokeStyle='#856b52';
@@ -1513,7 +1513,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-banheiros');
+    const { createModel }=await import('./model.mjs?v=20261122-ressalto');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
