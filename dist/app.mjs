@@ -1,6 +1,7 @@
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
+import { surveyDimensions, surveyDoors, surveyOutline, surveyProject } from './survey.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { startSync } from './sync.mjs';
@@ -228,9 +229,10 @@ function grid() {
 }
 
 function paintFootprint() {
-  if (project.template !== 'house') return;
+  const outline = project.template==='survey' ? surveyOutline : project.template==='house' ? houseOutline : null;
+  if (!outline) return;
   context.beginPath();
-  houseOutline.forEach(([x,y],index) => {
+  outline.forEach(([x,y],index) => {
     const point = screen({x,y});
     if (index === 0) context.moveTo(point.x,point.y);
     else context.lineTo(point.x,point.y);
@@ -390,6 +392,39 @@ function setMeasurementPoint(position,orthogonal) {
   draw();
 }
 
+function paintSurveyDimensions() {
+  context.save();
+  context.font='700 12px DM Sans, sans-serif';
+  context.textAlign='center';
+  context.textBaseline='middle';
+  for (const {a,b,cm,reference,approximate,suffix=''} of surveyDimensions) {
+    const first=screen(a);
+    const last=screen(b);
+    const horizontal=a.y===b.y;
+    const label=(approximate ? '≈ ' : '')+measurementLabel(cm/100)+(reference ? '*' : '')+suffix;
+    const color=reference ? '#8b5019' : '#1c7062';
+    context.strokeStyle=color;
+    context.lineWidth=1;
+    context.setLineDash(reference ? [3,3] : []);
+    stroke(first.x,first.y,last.x,last.y);
+    context.setLineDash([]);
+    for (const {x,y} of [first,last]) stroke(x-3,y-3,x+3,y+3);
+
+    context.save();
+    const x=(first.x+last.x)/2;
+    const y=(first.y+last.y)/2;
+    context.translate(x+(horizontal ? 0 : -10),y-(horizontal ? 10 : 0));
+    if (!horizontal) context.rotate(-Math.PI/2);
+    const width=context.measureText(label).width;
+    context.fillStyle='#f8fcf9';
+    context.fillRect(-width/2-3,-8,width+6,16);
+    context.fillStyle=color;
+    context.fillText(label,0,0);
+    context.restore();
+  }
+  context.restore();
+}
+
 function paintOriginal(reference) {
   const original=project.original;
   if (!original) return;
@@ -403,6 +438,7 @@ function draw() {
   updatePlanScale();
   if (view==='original') {
     paintOriginal(false);
+    if (project.original?.template==='survey') paintSurveyDimensions();
     return;
   }
   const drawing = wallGroupDrag?.change || wallDrag?.change || project;
@@ -423,6 +459,7 @@ function draw() {
     wallMeasure({a:{x:box.x,y:box.y},b:{x:box.x+box.width,y:box.y}},24);
     wallMeasure({a:{x:box.x,y:box.y+box.depth},b:{x:box.x,y:box.y}},23);
   }
+  if (drawing===project && project.template==='survey' && !selected && tool==='select') paintSurveyDimensions();
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
       const ghost = { id:'preview-wall',a:start,b:hover,thickness:placementThickness() };
@@ -1135,6 +1172,7 @@ function refresh() {
   eye.setAttribute('aria-pressed',String(Boolean(showOriginal && project.original)));
   eye.innerHTML=icon(showOriginal ? 'eye' : 'eyeOff');
   eye.title=showOriginal ? 'Ocultar planta original' : 'Mostrar planta original';
+  $('survey-notes').hidden=view==='model' || visibleProject?.template!=='survey';
   $('orientation').hidden=view==='model';
   $('scale-bar').hidden=view==='model';
   $('empty').hidden=project.walls.length>0 || !isPlan || tool!=='select';
@@ -1246,20 +1284,26 @@ $('catalog-items').onclick=() => setItems(true,'catalog');
 $('new').onclick=() => { $('new-dialog').returnValue=''; $('new-dialog').showModal(); };
 $('new-dialog').onclose=() => {
   const choice=$('new-dialog').returnValue;
-  if (choice!=='blank' && choice!=='template') return;
+  if (!['blank','template','survey'].includes(choice)) return;
   showOriginal=false;
   start=hover=preview=null;
   resetSelection();
   commit(() => {
-    project=prepareProject(choice==='template' ? defaultProject() : {name:'Sem título',walls:[],openings:[]});
+    const next=choice==='survey' ? surveyProject() : choice==='template' ? defaultProject() : {name:'Sem título',walls:[],openings:[]};
+    project=prepareProject(next);
     placementDefaults.wall.thicknessOverride=null;
   });
   if (view!=='plan') setView('plan');
-  setTool(choice==='template' ? 'select' : 'wall');
+  setTool(choice==='blank' ? 'wall' : 'select');
   fitPlan();
 };
+$('survey-notes').onclick=() => {
+  $('survey-door-a').textContent=unit.format(surveyDoors.aWidth)+' cm de largura × '+unit.format(surveyDoors.aHeight)+' cm de altura';
+  $('survey-door-b').textContent=unit.format(surveyDoors.bWidth)+' cm de largura';
+  $('survey-dialog').showModal();
+};
 document.addEventListener('keydown',event => {
-  if (view==='original' || event.target.matches('input,select,textarea') || $('new-dialog').open) return;
+  if (view==='original' || event.target.matches('input,select,textarea') || $('new-dialog').open || $('survey-dialog').open) return;
   const key=event.key.toLowerCase();
   if ((event.metaKey || event.ctrlKey) && ['z','y'].includes(key)) {
     event.preventDefault();
@@ -1284,7 +1328,7 @@ refresh();
 sync = startSync({
   getProject: () => project,
   applyRemote,
-  isBusy: () => Boolean(start || dragging || wallDrag || wallGroupDrag || openingDrag || measureStart || $('new-dialog').open || document.activeElement?.matches('input,select,textarea')),
+  isBusy: () => Boolean(start || dragging || wallDrag || wallGroupDrag || openingDrag || measureStart || $('new-dialog').open || $('survey-dialog').open || document.activeElement?.matches('input,select,textarea')),
   status: syncStatus
 });
 $('share').onclick = async () => {

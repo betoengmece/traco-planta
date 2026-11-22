@@ -1,53 +1,56 @@
 import { defaultWallThickness, length } from './geometry.mjs';
 
-// Coordinates are in metres, relative to the upper-left corner of the source plan.
-const leftRoom = 2.9733;
-const rearRoom = 2.9867;
-const passage = 3.9733;
-const annex = 5.9733;
-const right = 7.9733;
-const topLeft = .0149;
-const entry = .9511;
-const annexBottom = 1.4233;
-const leftPartition = 3.2149;
-const stripTop = 5.2633;
-const leftRoomBottom = 5.7149;
-const stripBottom = 6.5633;
-const rearBottom = 9.5633;
-const leftBottom = 9.9633;
+// Coordinates are in metres, relative to the upper-left corner.
+const standard = {
+  leftRoom:2.9733, rearRoom:2.9867, passage:3.9733, annex:5.9733, right:7.9733,
+  topLeft:.0149, entry:.9511, annexBottom:1.4233, leftPartition:3.2149,
+  stripTop:5.2633, leftRoomBottom:5.7149, stripBottom:6.5633, rearBottom:9.5633,
+  leftBottom:9.9633
+};
 
-export const houseOutline = [
-  [0,topLeft],[leftRoom,topLeft],[leftRoom,entry],[annex,entry],[annex,0],[right,0],
-  [right,rearBottom],[rearRoom,rearBottom],[rearRoom,leftBottom],[0,leftBottom]
-];
+export function houseLayout({
+  leftRoom, rearRoom, passage, annex, right, topLeft, entry, annexBottom, leftPartition,
+  stripTop, leftRoomBottom, stripBottom, rearBottom, leftBottom
+}) {
+  const outline = [
+    [0,topLeft],[leftRoom,topLeft],[leftRoom,entry],[annex,entry],[annex,0],[right,0],
+    [right,rearBottom],[rearRoom,rearBottom],[rearRoom,leftBottom],[0,leftBottom]
+  ];
+  const segments = [
+    ['top-left',0,topLeft,leftRoom,topLeft],
+    ['left-upper',0,topLeft,0,leftPartition],
+    ['left-middle',0,leftPartition,0,leftRoomBottom],
+    ['left-lower',0,leftRoomBottom,0,leftBottom],
+    ['bottom-left',0,leftBottom,rearRoom,leftBottom],
+    ['upper-divider',leftRoom,topLeft,leftRoom,entry],
+    ['middle-divider',leftRoom,entry,leftRoom,leftPartition],
+    ['lower-divider',leftRoom,leftPartition,leftRoom,leftRoomBottom],
+    ['left-cross',0,leftPartition,leftRoom,leftPartition],
+    ['left-base',0,leftRoomBottom,leftRoom,leftRoomBottom],
+    ['entry',leftRoom,entry,annex,entry],
+    ['annex-upper',annex,0,annex,entry],
+    ['annex-lower',annex,entry,annex,annexBottom],
+    ['annex-top',annex,0,right,0],
+    ['annex-bottom',annex,annexBottom,right,annexBottom],
+    ['right-annex',right,0,right,annexBottom],
+    ['right-main',right,annexBottom,right,stripTop],
+    ['right-strip',right,stripTop,right,stripBottom],
+    ['right-rear',right,stripBottom,right,rearBottom],
+    ['strip-top',passage,stripTop,right,stripTop],
+    ['strip-side',passage,stripTop,passage,stripBottom],
+    ['rear-entry',rearRoom,stripBottom,right,stripBottom],
+    ['rear-side',rearRoom,stripBottom,rearRoom,rearBottom],
+    ['bottom-right',rearRoom,rearBottom,right,rearBottom],
+    ['bottom-step',rearRoom,Math.min(rearBottom,leftBottom),rearRoom,Math.max(rearBottom,leftBottom)]
+  ];
 
-const segments = [
-  ['top-left',0,topLeft,leftRoom,topLeft],
-  ['left-upper',0,topLeft,0,leftPartition],
-  ['left-middle',0,leftPartition,0,leftRoomBottom],
-  ['left-lower',0,leftRoomBottom,0,leftBottom],
-  ['bottom-left',0,leftBottom,rearRoom,leftBottom],
-  ['upper-divider',leftRoom,topLeft,leftRoom,entry],
-  ['middle-divider',leftRoom,entry,leftRoom,leftPartition],
-  ['lower-divider',leftRoom,leftPartition,leftRoom,leftRoomBottom],
-  ['left-cross',0,leftPartition,leftRoom,leftPartition],
-  ['left-base',0,leftRoomBottom,leftRoom,leftRoomBottom],
-  ['entry',leftRoom,entry,annex,entry],
-  ['annex-upper',annex,0,annex,entry],
-  ['annex-lower',annex,entry,annex,annexBottom],
-  ['annex-top',annex,0,right,0],
-  ['annex-bottom',annex,annexBottom,right,annexBottom],
-  ['right-annex',right,0,right,annexBottom],
-  ['right-main',right,annexBottom,right,stripTop],
-  ['right-strip',right,stripTop,right,stripBottom],
-  ['right-rear',right,stripBottom,right,rearBottom],
-  ['strip-top',passage,stripTop,right,stripTop],
-  ['strip-side',passage,stripTop,passage,stripBottom],
-  ['rear-entry',rearRoom,stripBottom,right,stripBottom],
-  ['rear-side',rearRoom,stripBottom,rearRoom,rearBottom],
-  ['bottom-right',rearRoom,rearBottom,right,rearBottom],
-  ['bottom-step',rearRoom,rearBottom,rearRoom,leftBottom]
-];
+  const walls = segments.map(([id,x,y,endX,endY]) => ({
+    id, a:{x,y}, b:{x:endX,y:endY}, height:2.5, thickness:defaultWallThickness
+  }));
+  return {outline,walls};
+}
+
+export const houseOutline = houseLayout(standard).outline;
 
 const doors = [
   ['middle-divider',2.3642,'start',1],
@@ -65,9 +68,7 @@ const slidingWindows = [
 ];
 
 export function defaultProject() {
-  const walls = segments.map(([id,x,y,endX,endY]) => ({
-    id, a:{x,y}, b:{x:endX,y:endY}, height:2.5, thickness:defaultWallThickness
-  }));
+  const {walls}=houseLayout(standard);
   const byId = new Map(walls.map(wall => [wall.id,wall]));
   function opening(id, wallId, center, details) {
     const wall = byId.get(wallId);

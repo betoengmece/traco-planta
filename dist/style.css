@@ -170,3 +170,6 @@ dialog form>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px}
   #toggle-original{min-width:36px}
   .top-actions{gap:4px}
 }
+
+.survey-notes{position:absolute;top:12px;left:12px;background:var(--surface,#fff);z-index:1}
+#survey-dialog li{margin-bottom:8px;font-size:.9375rem;line-height:1.4}

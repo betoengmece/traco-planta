@@ -67,12 +67,24 @@
         <button id="fit" title="Enquadrar planta" aria-label="Enquadrar planta"><i data-icon="fit"></i></button>
         <span class="zoom-group"><button id="zoom-out" aria-label="Diminuir zoom"><i data-icon="minus"></i></button><output id="zoom">100%</output><button id="zoom-in" aria-label="Aumentar zoom"><i data-icon="plus"></i></button></span>
       </div>
+      <button id="survey-notes" class="plain survey-notes" type="button" hidden>Notas das cotas</button>
       <div id="scale-bar"><span></span>1 m</div>
     </div>
     <footer class="workspace-foot"><strong id="mode"></strong><span id="hint" aria-live="polite"></span><span id="project-count"></span></footer>
   </section>
 </main>
-<dialog id="new-dialog"><form method="dialog"><h2>Novo projeto</h2><p>Escolha a planta padrão ou comece em branco. Use Desfazer para voltar à planta atual antes de recarregar.</p><div><button value="cancel" class="plain">Cancelar</button><button value="blank" class="plain">Em branco</button><button value="template" class="primary">Usar planta padrão</button></div></form></dialog>
+<dialog id="new-dialog"><form method="dialog"><h2>Novo projeto</h2><p>Escolha uma planta inicial ou comece em branco. Use Desfazer para voltar à planta atual antes de recarregar.</p><div><button value="cancel" class="plain">Cancelar</button><button value="blank" class="plain">Em branco</button><button value="template" class="plain">Usar planta padrão</button><button value="survey" class="primary">Levantamento da casa</button></div></form></dialog>
+<dialog id="survey-dialog"><form method="dialog">
+  <h2>Notas das cotas</h2>
+  <p>As medidas marcadas com + T no croqui já incluem os 7 cm da trena. O símbolo ≈ indica uma medida aproximada. As cotas tracejadas com * são referências do croqui que precisam de conferência.</p>
+  <ul>
+    <li><strong>Porta A</strong> — <span id="survey-door-a"></span>. A posição corresponde ao vão de 61,5 cm + T no croqui.</li>
+    <li><strong>Porta B</strong> — <span id="survey-door-b"></span>. A altura e a posição estão em aberto.</li>
+    <li>As cotas de 2,29 m, 1,03 m e 1,62 m dependem da confirmação dos pontos de medição. As duas medidas no canto inferior esquerdo aparecem como cotas de referência.</li>
+    <li>As anotações avulsas no canto superior esquerdo da folha (326, 7,5 e 5) ficaram sem vínculo com uma parede.</li>
+  </ul>
+  <div><button class="primary">Fechar</button></div>
+</form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
 <script type="module" src="./app.mjs"></script>
 </body>

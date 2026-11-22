@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { bounds, clamp, heading, interval, joinedWallCaps, length } from './geometry.mjs';
 import { houseOutline } from './template.mjs';
+import { surveyOutline } from './survey.mjs';
 
 export function createModel(host, onZoom) {
   const scene = new THREE.Scene();
@@ -39,11 +40,15 @@ export function createModel(host, onZoom) {
     base:new THREE.MeshStandardMaterial({color:'#dce7dd',roughness:1})
   };
   const unitBox = new THREE.BoxGeometry(1,1,1);
-  const slabGeometry = new THREE.ShapeGeometry(new THREE.Shape(houseOutline.map(([x,y])=>new THREE.Vector2(x,-y))));
-  slabGeometry.rotateX(-Math.PI/2);
-  const slab = new THREE.Mesh(slabGeometry,mats.floor);
-  slab.position.y=-.018;
-  slab.receiveShadow=true;
+  function floorSlab(outline) {
+    const geometry=new THREE.ShapeGeometry(new THREE.Shape(outline.map(([x,y])=>new THREE.Vector2(x,-y))));
+    geometry.rotateX(-Math.PI/2);
+    const slab=new THREE.Mesh(geometry,mats.floor);
+    slab.position.y=-.018;
+    slab.receiveShadow=true;
+    return slab;
+  }
+  const slabs={house:floorSlab(houseOutline),survey:floorSlab(surveyOutline)};
   const background = new THREE.Mesh(unitBox,mats.base);
   background.receiveShadow=true;
   scene.add(background);
@@ -124,7 +129,7 @@ export function createModel(host, onZoom) {
     box=bounds(project);
     assembly.clear();
     project.walls.forEach(wall => addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls));
-    if (project.template === 'house') assembly.add(slab);
+    if (Object.hasOwn(slabs,project.template)) assembly.add(slabs[project.template]);
     const span=Math.max(box.width,box.depth);
     const cx=box.x+box.width/2;
     const cz=box.y+box.depth/2;
