@@ -5,7 +5,7 @@ import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
-import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyCorrections } from './survey.mjs?v=20261122-janela-cozinha';
+import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, rearBathroomDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyCorrections } from './survey.mjs?v=20261122-ressalto';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { startSync } from './sync.mjs';
@@ -564,7 +564,8 @@ function paintSurveyDimensions(visibleProject) {
   const fullSurvey=visibleProject.template==='survey';
   const livingDimensions=livingWindowDimensions(visibleProject);
   const windowDimensions=[...livingDimensions,...kitchenWindowDimensions(visibleProject)];
-  if (!fullSurvey && !windowDimensions.length) return;
+  const bathroomDimensions=rearBathroomDimensions(visibleProject);
+  if (!fullSurvey && !windowDimensions.length && !bathroomDimensions.length) return;
   context.save();
   context.textAlign='center';
   context.textBaseline='middle';
@@ -577,7 +578,7 @@ function paintSurveyDimensions(visibleProject) {
   context.font='700 12px DM Sans, sans-serif';
   const dimensions=fullSurvey
     ? [...surveyDimensions,...lowerLeftDoorDimensions(visibleProject),...windowDimensions]
-    : windowDimensions;
+    : [...windowDimensions,...bathroomDimensions];
   paintDimensions(dimensions);
   context.restore();
 }

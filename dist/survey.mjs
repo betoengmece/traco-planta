@@ -284,7 +284,9 @@ export function kitchenWindowDimensions(project) {
   const startWall=project.walls.find(item=>item.id===kitchenWindowStartWallId);
   const endWall=project.walls.find(item=>item.id===kitchenWindowEndWallId);
   if (!opening || !matchesSurveyWall(wall,kitchenWindowWallId) ||
-      !matchesSurveyWall(startWall,kitchenWindowStartWallId) || !matchesSurveyWall(endWall,kitchenWindowEndWallId)) return [];
+      startWall?.a.y!==wall.a.y || startWall.b.y!==wall.a.y ||
+      Math.min(startWall.a.x,startWall.b.x)>wall.a.x || Math.max(startWall.a.x,startWall.b.x)<wall.a.x ||
+      !matchesSurveyWall(endWall,kitchenWindowEndWallId)) return [];
   const [start,end]=interval(opening,wall);
   const left=wall.a.y+startWall.thickness/2;
   const right=wall.b.y-endWall.thickness/2;
@@ -313,4 +315,20 @@ export function lowerLeftDoorDimensions(project) {
     v(field.lowerLeftDoorWidth,wall.a.x+.33,wall.a.y+start,jamb),
     v(field.lowerLeftDoorOffset,wall.a.x+.16,jamb,innerFace)
   ];
+}
+
+export function rearBathroomDimensions(project) {
+  if (project.original?.template!=='survey' || project.template==='survey') return [];
+  const walls=new Map(project.walls.map(wall=>[wall.id,wall]));
+  const left=walls.get('annex-upper'),right=walls.get('right-annex');
+  const top=walls.get('annex-top'),bottom=walls.get('annex-bottom');
+  if (!left || !right || !top || !bottom || left.a.x!==left.b.x || right.a.x!==right.b.x ||
+      top.a.y!==top.b.y || bottom.a.y!==bottom.b.y ||
+      top.a.x!==left.a.x || bottom.a.x!==left.a.x ||
+      top.b.x!==right.a.x || bottom.b.x!==right.b.x ||
+      top.a.y!==right.a.y || bottom.a.y!==right.b.y) return [];
+  const x1=left.a.x+left.thickness/2, x2=right.a.x-right.thickness/2;
+  const y1=top.a.y+top.thickness/2, y2=bottom.a.y-bottom.thickness/2;
+  if (x2<=x1 || y2<=y1) return [];
+  return [h((x2-x1)*100,x1,x2,y1+.38),v((y2-y1)*100,x1+.25,y1,y2)];
 }
