@@ -32,14 +32,16 @@ const stripBottom = stripTop + metres(field.stripDepth) + thickness;
 const passage = right - metres(field.stripWidth) - thickness;
 const rearBottom = stripBottom + metres(field.lowerRightDepth) + thickness;
 
-// Elevation measured from inside the living room, facing the upper wall of the plan.
+// Elevation measured from inside the living room, facing the bottom wall of the plan.
 const livingWindow = {
   left:83, right:65+tape, floor:101, ceiling:56, wallHeight:253+tape
 };
-const livingWindowWidth=field.upperLeftWidth-livingWindow.left-livingWindow.right;
+const livingWindowWidth=field.lowerLeftWidth-livingWindow.left-livingWindow.right;
 const livingWindowHeight=livingWindow.wallHeight-livingWindow.floor-livingWindow.ceiling;
-const livingWindowWallId='top-left';
-export const livingRoomLabel={x:leftRoom/2,y:1.02};
+const livingWindowWallId='bottom-left';
+const livingWindowStartWallId='left-lower';
+const livingWindowEndWallId='rear-side';
+export const livingRoomLabel={x:rearRoom/2,y:leftBottom-.92};
 
 const layout = {
   leftRoom, rearRoom, passage, annex, right, topLeft:0, entry, annexBottom,
@@ -99,7 +101,37 @@ function correctSurveyCopy(project) {
 }
 
 const previousLivingWindow=previousOpenings.find(opening => opening.wallId===livingWindowWallId);
-const livingWindowType='survey-living-window';
+const livingWindowType='survey-living-window-lower';
+const misplacedWindowType='survey-living-window';
+const stockUpperWindow=previousOpenings.find(opening => opening.wallId==='top-left');
+
+function restoreUpperWindow(project) {
+  if (project?.template!=='survey') return project;
+  const opening=project.openings.find(item => item.id===stockUpperWindow.id);
+  const misplacedWidth=metres(field.upperLeftWidth-livingWindow.left-livingWindow.right);
+  const misplacedT=(half+metres(livingWindow.left)+misplacedWidth/2)/leftRoom;
+  if (opening?.wallId!=='top-left' || opening.typeId!==misplacedWindowType ||
+      opening.t!==misplacedT || opening.width!==misplacedWidth ||
+      opening.height!==metres(livingWindowHeight) || opening.sill!==metres(livingWindow.floor) ||
+      opening.casement!==stockUpperWindow.casement) return project;
+
+  const wall=project.walls.find(item => item.id===opening.wallId);
+  const stockType=project.windowTypes?.find(type => !type.casement &&
+    ['width','height','sill'].every(key => type[key]===stockUpperWindow[key]));
+  if (!wall || !stockType) return project;
+  const restoredWindow={...stockUpperWindow,typeId:stockType.id};
+  const restoredWall={...wall,height:2.5};
+  const openings=project.openings.map(item => item===opening ? restoredWindow : item);
+  if (!validateOpening(restoredWindow,wall,openings)) return project;
+  const resetHeight=wall.height===metres(livingWindow.wallHeight) &&
+    openings.filter(item => item.wallId===wall.id).every(item => validateOpening(item,restoredWall,openings));
+  const stillUsed=openings.some(item => item.typeId===misplacedWindowType);
+  return {
+    ...project,openings,
+    walls:resetHeight ? project.walls.map(item => item===wall ? restoredWall : item) : project.walls,
+    windowTypes:stillUsed ? project.windowTypes : project.windowTypes.filter(type => type.id!==misplacedWindowType)
+  };
+}
 
 function applyLivingWindowSurvey(project) {
   if (project?.template!=='survey') return project;
@@ -108,10 +140,10 @@ function applyLivingWindowSurvey(project) {
   if (!wall || wall.height!==2.5 || opening?.wallId!==wall.id ||
       !['t','width','height','sill','casement'].every(key => opening[key]===previousLivingWindow[key])) return project;
 
-  const leftWall=project.walls.find(item => item.id==='left-upper');
-  const rightWall=project.walls.find(item => item.id==='upper-divider');
-  if (!leftWall || !rightWall ||
-      Math.abs(length(wall)-(leftWall.thickness+rightWall.thickness)/2-metres(field.upperLeftWidth))>1e-6) return project;
+  const startWall=project.walls.find(item => item.id===livingWindowStartWallId);
+  const endWall=project.walls.find(item => item.id===livingWindowEndWallId);
+  if (!startWall || !endWall ||
+      Math.abs(length(wall)-(startWall.thickness+endWall.thickness)/2-metres(field.lowerLeftWidth))>1e-6) return project;
 
   const width=metres(livingWindowWidth);
   const height=metres(livingWindowHeight);
@@ -119,7 +151,8 @@ function applyLivingWindowSurvey(project) {
   const measuredWall={...wall,height:metres(livingWindow.wallHeight)};
   const measuredWindow={
     ...opening,width,height,sill,typeId:livingWindowType,
-    t:(leftWall.thickness/2+metres(livingWindow.left)+width/2)/length(wall)
+    // Facing the bottom wall reverses the observer's left/right relative to plan x.
+    t:(startWall.thickness/2+metres(livingWindow.right)+width/2)/length(wall)
   };
   if (!validateOpening(measuredWindow,measuredWall,project.openings)) return project;
   const withTypes=withWindowTypes(project);
@@ -133,7 +166,7 @@ function applyLivingWindowSurvey(project) {
 }
 
 export function withSurveyCorrections(project) {
-  const update=copy => applyLivingWindowSurvey(correctSurveyCopy(copy));
+  const update=copy => applyLivingWindowSurvey(restoreUpperWindow(correctSurveyCopy(copy)));
   const corrected=update(project);
   const original=update(project.original);
   return original===project.original ? corrected : {...corrected,original};
@@ -186,13 +219,13 @@ export const surveyDimensions = [
 export function livingWindowDimensions(project) {
   const wall=project.walls.find(item => item.id===livingWindowWallId);
   const opening=project.openings.find(item => item.typeId===livingWindowType && item.wallId===wall?.id);
-  const leftWall=project.walls.find(item => item.id==='left-upper');
-  const rightWall=project.walls.find(item => item.id==='upper-divider');
-  if (!opening || !leftWall || !rightWall) return [];
+  const startWall=project.walls.find(item => item.id===livingWindowStartWallId);
+  const endWall=project.walls.find(item => item.id===livingWindowEndWallId);
+  if (!opening || !startWall || !endWall) return [];
   const [start,end]=interval(opening,wall);
-  const left=wall.a.x+leftWall.thickness/2;
-  const right=wall.b.x-rightWall.thickness/2;
-  const y=wall.a.y+.37;
+  const left=wall.a.x+startWall.thickness/2;
+  const right=wall.b.x-endWall.thickness/2;
+  const y=wall.a.y-.37;
   return [
     h((wall.a.x+start-left)*100,left,wall.a.x+start,y),
     h(opening.width*100,wall.a.x+start,wall.a.x+end,y),
