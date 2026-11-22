@@ -1,7 +1,7 @@
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
-import { lowerLeftDoorDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyDoorCorrection } from './survey.mjs';
+import { livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyCorrections } from './survey.mjs';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { startSync } from './sync.mjs';
@@ -67,7 +67,7 @@ const past = [];
 const future = [];
 renderIcons();
 
-function prepareProject(value) { return withWindowTypes(withWallThickness(withSurveyDoorCorrection(value))); }
+function prepareProject(value) { return withWindowTypes(withWallThickness(withSurveyCorrections(value))); }
 
 function placementThickness() {
   return placementDefaults.wall.thicknessOverride ?? project.wallThickness;
@@ -394,10 +394,15 @@ function setMeasurementPoint(position,orthogonal) {
 
 function paintSurveyDimensions(visibleProject) {
   context.save();
-  context.font='700 12px DM Sans, sans-serif';
   context.textAlign='center';
   context.textBaseline='middle';
-  for (const {a,b,cm,reference,approximate,suffix=''} of [...surveyDimensions,...lowerLeftDoorDimensions(visibleProject)]) {
+  context.font='700 14px DM Sans, sans-serif';
+  context.fillStyle='#234e43';
+  const room=screen(livingRoomLabel);
+  context.fillText('Sala',room.x,room.y);
+  context.font='700 12px DM Sans, sans-serif';
+  const dimensions=[...surveyDimensions,...lowerLeftDoorDimensions(visibleProject),...livingWindowDimensions(visibleProject)];
+  for (const {a,b,cm,reference,approximate,suffix=''} of dimensions) {
     const first=screen(a);
     const last=screen(b);
     const horizontal=a.y===b.y;

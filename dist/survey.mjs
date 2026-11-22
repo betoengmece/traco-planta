@@ -1,5 +1,6 @@
 import { clamp, defaultWallThickness, interval, length, validateOpening } from './geometry.mjs';
 import { defaultProject, houseLayout } from './template.mjs';
+import { withWindowTypes } from './window-types.mjs';
 
 const tape = 7;
 const thickness = defaultWallThickness;
@@ -30,6 +31,15 @@ const stripTop = annexBottom + metres(field.upperRightDepth) + thickness;
 const stripBottom = stripTop + metres(field.stripDepth) + thickness;
 const passage = right - metres(field.stripWidth) - thickness;
 const rearBottom = stripBottom + metres(field.lowerRightDepth) + thickness;
+
+// Elevation measured from inside the living room, facing the upper wall of the plan.
+const livingWindow = {
+  left:83, right:65+tape, floor:101, ceiling:56, wallHeight:253+tape
+};
+const livingWindowWidth=field.upperLeftWidth-livingWindow.left-livingWindow.right;
+const livingWindowHeight=livingWindow.wallHeight-livingWindow.floor-livingWindow.ceiling;
+const livingWindowWallId='top-left';
+export const livingRoomLabel={x:leftRoom/2,y:1.02};
 
 const layout = {
   leftRoom, rearRoom, passage, annex, right, topLeft:0, entry, annexBottom,
@@ -88,17 +98,53 @@ function correctSurveyCopy(project) {
   return {...project,openings:project.openings.map(opening => opening===door ? corrected : opening)};
 }
 
-export function withSurveyDoorCorrection(project) {
-  const corrected=correctSurveyCopy(project);
-  const original=correctSurveyCopy(project.original);
+const previousLivingWindow=previousOpenings.find(opening => opening.wallId===livingWindowWallId);
+const livingWindowType='survey-living-window';
+
+function applyLivingWindowSurvey(project) {
+  if (project?.template!=='survey') return project;
+  const opening=project.openings.find(item => item.id===previousLivingWindow.id);
+  const wall=project.walls.find(item => item.id===livingWindowWallId);
+  if (!wall || wall.height!==2.5 || opening?.wallId!==wall.id ||
+      !['t','width','height','sill','casement'].every(key => opening[key]===previousLivingWindow[key])) return project;
+
+  const leftWall=project.walls.find(item => item.id==='left-upper');
+  const rightWall=project.walls.find(item => item.id==='upper-divider');
+  if (!leftWall || !rightWall ||
+      Math.abs(length(wall)-(leftWall.thickness+rightWall.thickness)/2-metres(field.upperLeftWidth))>1e-6) return project;
+
+  const width=metres(livingWindowWidth);
+  const height=metres(livingWindowHeight);
+  const sill=metres(livingWindow.floor);
+  const measuredWall={...wall,height:metres(livingWindow.wallHeight)};
+  const measuredWindow={
+    ...opening,width,height,sill,typeId:livingWindowType,
+    t:(leftWall.thickness/2+metres(livingWindow.left)+width/2)/length(wall)
+  };
+  if (!validateOpening(measuredWindow,measuredWall,project.openings)) return project;
+  const withTypes=withWindowTypes(project);
+  const measuredType={id:livingWindowType,name:'Janela da sala',width,height,sill,casement:false};
+  return {
+    ...withTypes,
+    walls:project.walls.map(item => item===wall ? measuredWall : item),
+    openings:withTypes.openings.map(item => item.id===opening.id ? measuredWindow : item),
+    windowTypes:[...withTypes.windowTypes,measuredType]
+  };
+}
+
+export function withSurveyCorrections(project) {
+  const update=copy => applyLivingWindowSurvey(correctSurveyCopy(copy));
+  const corrected=update(project);
+  const original=update(project.original);
   return original===project.original ? corrected : {...corrected,original};
 }
 
-const openings=correctSurveyCopy({template:'survey',walls,openings:previousOpenings}).openings;
+const originalSurvey=withSurveyCorrections({
+  name:'Levantamento da casa',walls,openings:previousOpenings,template:'survey',wallThickness:thickness
+});
 
 export function surveyProject() {
-  const original=structuredClone({name:'Levantamento da casa',walls,openings,template:'survey',wallThickness:thickness});
-  return {...structuredClone(original),original};
+  return {...structuredClone(originalSurvey),original:structuredClone(originalSurvey)};
 }
 
 export const surveyDoors = { aWidth:field.doorA, aHeight:field.doorAHeight, bWidth:field.doorB };
@@ -107,7 +153,7 @@ const h = (cm, x1, x2, y, options) => ({cm,a:{x:x1,y},b:{x:x2,y},...options});
 const v = (cm, x, y1, y2, options) => ({cm,a:{x,y:y1},b:{x,y:y2},...options});
 const doorBounds = wallId => {
   const wall=walls.find(item => item.id===wallId);
-  const door=openings.find(item => item.wallId===wallId);
+  const door=originalSurvey.openings.find(item => item.wallId===wallId);
   const center=length(wall)*door.t;
   return [center-door.width/2,center+door.width/2];
 };
@@ -136,6 +182,23 @@ export const surveyDimensions = [
   h(field.lowerRightWidth,rearRoom+half,right-half,rearBottom-1.25),
   v(field.lowerRightDepth,right-.52,stripBottom+half,rearBottom-half)
 ];
+
+export function livingWindowDimensions(project) {
+  const wall=project.walls.find(item => item.id===livingWindowWallId);
+  const opening=project.openings.find(item => item.typeId===livingWindowType && item.wallId===wall?.id);
+  const leftWall=project.walls.find(item => item.id==='left-upper');
+  const rightWall=project.walls.find(item => item.id==='upper-divider');
+  if (!opening || !leftWall || !rightWall) return [];
+  const [start,end]=interval(opening,wall);
+  const left=wall.a.x+leftWall.thickness/2;
+  const right=wall.b.x-rightWall.thickness/2;
+  const y=wall.a.y+.37;
+  return [
+    h((wall.a.x+start-left)*100,left,wall.a.x+start,y),
+    h(opening.width*100,wall.a.x+start,wall.a.x+end,y),
+    h((right-wall.a.x-end)*100,wall.a.x+end,right,y)
+  ];
+}
 
 export function lowerLeftDoorDimensions(project) {
   const wall=project.walls.find(item => item.id==='left-lower');
