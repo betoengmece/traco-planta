@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Desenhe paredes, portas e janelas e explore a planta em 3D.">
 <title>Traço Planta</title>
-<link rel="stylesheet" href="./style.css?v=20261124-etapas">
+<link rel="stylesheet" href="./style.css?v=20261124-original">
 </head>
 <body>
 <header class="top">
@@ -27,7 +27,8 @@
     <button id="add-stage" class="plain" type="button">+ Nova etapa</button>
   </div>
   <div id="stage-draft" class="stage-draft" hidden>
-    <label for="stage-name">Nome da etapa</label>
+    <strong id="original-edit-warning" role="status" hidden>Você está modificando a planta Original.</strong>
+    <label id="stage-name-label" for="stage-name">Nome da etapa</label>
     <input id="stage-name" maxlength="70">
     <div class="stage-actions">
       <button id="cancel-stage" class="plain" type="button">Cancelar</button>
@@ -137,6 +138,6 @@
   <div><button class="primary">Fechar</button></div>
 </form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
-<script type="module" src="./app.mjs?v=20261124-etapas"></script>
+<script type="module" src="./app.mjs?v=20261124-original"></script>
 </body>
 </html>

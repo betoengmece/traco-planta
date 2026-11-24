@@ -76,12 +76,12 @@ export function startSync({applyRemote,isBusy,status,unavailable}) {
 
   return {
     link:()=>version ? location.origin+location.pathname+'#p='+code : null,
-    async save(data) {
+    async save(data,{original=false}={}) {
       if (!version || writing) return 'unavailable';
       writing=true;
       status('busy','Salvando na nuvem…');
       try {
-        const row=await call('planta_save_reforma',{p_id:code,p_data:data,p_expected_version:version});
+        const row=await call(original ? 'planta_save_original' : 'planta_save_reforma',{p_id:code,p_data:data,p_expected_version:version});
         if (!row) {
           status('error','Reforma alterada em outro aparelho');
           return 'conflict';

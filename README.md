@@ -27,7 +27,7 @@ Abra [http://127.0.0.1:4173](http://127.0.0.1:4173). Não há instalação de pa
 
 Abra o link compartilhado da reforma, identificado pelo código no fragmento `#p=...`. Use **Copiar link** para abrir a mesma reforma em outro aparelho. O endereço de acesso permite consultar e editar as etapas.
 
-A linha do tempo parte da **Original** protegida. Cada etapa guarda as diferenças em relação à etapa anterior. Para corrigir uma etapa antiga, revise o impacto e confirme a propagação. O editor aponta operações incompatíveis e preserva as demais.
+A linha do tempo parte da **Original**. Para corrigi-la, use **Editar Original** e confirme em **Salvar Original**. Cada etapa guarda as diferenças em relação à etapa anterior. Para corrigir uma etapa antiga, revise o impacto e confirme a propagação. O editor aponta operações incompatíveis e preserva as demais.
 
 `dist/renovation.mjs` calcula e reaplica as diferenças. `dist/sync.mjs` consulta o Supabase e usa a versão da reforma para impedir que uma gravação substitua alterações mais recentes. O editor salva as etapas na nuvem ao confirmar a edição.
 

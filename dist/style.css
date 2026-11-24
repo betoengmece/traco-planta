@@ -213,3 +213,8 @@ main{height:auto;flex:1}
   .stage-draft label{font-size:.74rem}
   .stage-actions button{padding-inline:6px}
 }
+
+#original-edit-warning{color:#793a10;background:#fff1dc;border-radius:6px;padding:5px 8px;font-size:.84rem}
+@media(max-width:460px){
+  .stage-draft:has(#original-edit-warning:not([hidden])){flex-wrap:wrap}
+}

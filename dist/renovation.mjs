@@ -133,10 +133,12 @@ export function stagePlans(document) {
 export function reviewStage(document,id,title,draft) {
   const oldPlans=stagePlans(document);
   const index=document.stages.findIndex(stage=>stage.id===id);
-  const at=index<0 ? document.stages.length : index;
-  const stages=document.stages.slice(0,at);
-  stages.push({id,title,ops:planChanges(oldPlans[at],draft)});
+  const editingOriginal=id===null;
+  const at=editingOriginal ? -1 : index<0 ? document.stages.length : index;
+  const stages=editingOriginal ? [] : document.stages.slice(0,at);
   let previous=layout(draft);
+  const original=editingOriginal ? previous : document.original;
+  if (!editingOriginal) stages.push({id,title,ops:planChanges(oldPlans[at],draft)});
   const conflicts=[];
   const impacted=[];
   for (let i=at+1;i<document.stages.length;i++) {
@@ -147,5 +149,5 @@ export function reviewStage(document,id,title,draft) {
     for (const conflict of result.conflicts) conflicts.push({...conflict,stage,number:i+1});
     previous=result.plan;
   }
-  return {document:{...document,stages},impacted,conflicts};
+  return {document:{...document,original,stages},impacted,conflicts};
 }

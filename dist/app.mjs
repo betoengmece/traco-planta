@@ -8,8 +8,8 @@ import { defaultProject, houseOutline } from './template.mjs';
 import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, rearBathroomDimensions, surveyDimensions, surveyDoors, surveyOutline, withSurveyCorrections } from './survey.mjs?v=20261124-etapas';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
-import { projectCode, startSync } from './sync.mjs?v=20261124-etapas';
-import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs';
+import { projectCode, startSync } from './sync.mjs?v=20261124-original';
+import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs?v=20261124-original';
 import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
@@ -96,7 +96,7 @@ function syncStatus(state,text) {
 function applyRemote(data) {
   if (!data?.walls || !data?.openings) return;
   const first=!remodel;
-  remodel=renovation({...data,...prepareProject(data)});
+  remodel=renovation(Array.isArray(data.stages) ? data : prepareProject(data));
   plans=stagePlans(remodel);
   $('project-access').hidden=true;
   $('editor').hidden=false;
@@ -153,19 +153,24 @@ function renderTimeline() {
   if (!activeBefore || list.querySelector('[aria-current="step"]')?.textContent!==activeBefore.textContent) {
     list.querySelector('[aria-current="step"]')?.scrollIntoView({block:'nearest',inline:'nearest'});
   }
-  $('edit-stage').hidden=Boolean(!stageId || editing);
+  $('edit-stage').hidden=Boolean(editing);
+  $('edit-stage').textContent=stageId===null ? 'Editar Original' : 'Editar etapa';
   $('edit-stage').disabled=$('add-stage').disabled=savingStage;
   $('add-stage').hidden=Boolean(editing);
   $('stage-draft').hidden=!editing;
+  const editingOriginal=editing?.id===null;
+  $('original-edit-warning').hidden=!editingOriginal;
+  $('stage-name').hidden=$('stage-name-label').hidden=editingOriginal;
   $('stage-name').disabled=$('save-stage').disabled=$('cancel-stage').disabled=savingStage;
   const editingIndex=remodel.stages.findIndex(stage=>stage.id===editing?.id);
-  $('save-stage').textContent=editingIndex>=0 && editingIndex<remodel.stages.length-1 ? 'Revisar impacto' : 'Salvar etapa';
+  $('save-stage').textContent=editingOriginal ? 'Salvar Original' :
+    editingIndex>=0 && editingIndex<remodel.stages.length-1 ? 'Revisar impacto' : 'Salvar etapa';
 }
 
 function discardDraft() {
   if (!editing) return true;
   if ((past.length || $('stage-name').value.trim()!==editing.title) &&
-      !window.confirm('Descartar as alterações desta etapa?')) return false;
+      !window.confirm(editing.id===null ? 'Descartar as alterações da planta Original?' : 'Descartar as alterações desta etapa?')) return false;
   stageId=editing.previous;
   editing=null;
   return true;
@@ -174,18 +179,19 @@ function discardDraft() {
 function editStage(create) {
   if (editing || savingStage) return;
   const existing=remodel.stages.find(stage=>stage.id===stageId);
-  if (!create && !existing) return;
+  if (!create && !existing && stageId!==null) return;
   const previous=stageId;
   if (create) displayStage(remodel.stages.at(-1)?.id ?? null);
-  const id=create ? crypto.randomUUID() : existing.id;
-  const title=create ? '' : existing.title;
+  const id=create ? crypto.randomUUID() : existing?.id ?? null;
+  const title=create ? '' : existing?.title ?? '';
   editing={id,title,previous};
   stageId=id;
   $('stage-name').value=title;
   if (view!=='plan') setView('plan');
   renderTimeline();
   refresh();
-  $('stage-name').focus();
+  if (id===null) $('save-stage').focus();
+  else $('stage-name').focus();
 }
 
 function summarizeConflict({path,opening,stage,number}) {
@@ -201,22 +207,27 @@ function saveStage() {
     return;
   }
   const title=$('stage-name').value.trim();
-  if (!title) {
+  const editingOriginal=editing.id===null;
+  if (!editingOriginal && !title) {
     $('stage-name').focus();
     toast('Dê um nome à etapa.');
     return;
   }
   review=reviewStage(remodel,editing.id,title,project);
   const later=remodel.stages.findIndex(stage=>stage.id===editing.id);
-  if (later<0 || later===remodel.stages.length-1) {
+  if (!editingOriginal && (later<0 || later===remodel.stages.length-1)) {
     commitStage();
     return;
   }
   const {impacted,conflicts}=review;
-  $('review-summary').textContent=impacted.length
+  $('review-title').textContent=editingOriginal ? 'Salvar a planta Original?' : 'Revisar impacto';
+  const impactMessage=impacted.length
     ? 'Etapas que serão atualizadas — '+impacted.map(stage=>
       (remodel.stages.indexOf(stage)+1)+' · '+stage.title).join(', ')+'.'
     : 'As plantas das etapas seguintes ficam iguais.';
+  $('review-summary').textContent=editingOriginal
+    ? 'Você vai alterar a planta Original.'+(remodel.stages.length ? ' '+impactMessage : '')
+    : impactMessage;
   const list=$('review-conflicts');
   list.replaceChildren(...[...new Set(conflicts.map(summarizeConflict))].map(message=>{
     const item=document.createElement('li');
@@ -224,7 +235,8 @@ function saveStage() {
     return item;
   }));
   list.hidden=!conflicts.length;
-  $('confirm-review').textContent=conflicts.length ? 'Descartar conflitos e propagar' : 'Propagar e salvar';
+  $('confirm-review').textContent=conflicts.length ? 'Descartar conflitos e propagar' :
+    editingOriginal ? 'Confirmar e salvar Original' : 'Propagar e salvar';
   $('review-dialog').returnValue='';
   $('review-dialog').showModal();
 }
@@ -237,12 +249,12 @@ async function commitStage() {
   editing=null;
   renderTimeline();
   refresh();
-  const result=await sync.save(sharedRenovation(review.document));
+  const result=await sync.save(sharedRenovation(review.document),{original:id===null});
   savingStage=false;
   review=null;
   if (result==='saved') {
     displayStage(id);
-    toast('Etapa salva.');
+    toast(id===null ? 'Planta Original salva.' : 'Etapa salva.');
   } else {
     editing=draft;
     if (result==='conflict') toast('Outra pessoa salvou primeiro. O rascunho segue aberto. Cancele a edição para carregar a versão da nuvem.');
