@@ -2,20 +2,20 @@ import { siteExterior } from './site-exterior.mjs';
 import { furnitureFootprint, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261122-banheiros';
 import { interiorLayout } from './interior-layout.mjs?v=20261122-banheiros';
 import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
-import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, legacyExampleProject, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
+import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
-import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, rearBathroomDimensions, surveyDimensions, surveyDoors, surveyOutline, surveyProject, withSurveyCorrections } from './survey.mjs?v=20261122-ressalto';
+import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lowerLeftDoorDimensions, rearBathroomDimensions, surveyDimensions, surveyDoors, surveyOutline, withSurveyCorrections } from './survey.mjs?v=20261124-etapas';
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
-import { startSync } from './sync.mjs';
+import { projectCode, startSync } from './sync.mjs?v=20261124-etapas';
+import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs';
 import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
 const plan = $('plan');
 const stage = $('stage');
 const context = plan.getContext('2d');
-const storageKey = 'traco-planta-v1';
 const kitchenPhotoKey='traco-planta-foto-janela-cozinha';
 const defaultKitchenPhoto=new URL('./assets/vista-cozinha.webp',import.meta.url).href;
 const unit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
@@ -33,7 +33,14 @@ const messages = {
   window: 'Escolha um trecho livre da parede com espaço para a janela.'
 };
 const shortNames = { wall: 'Parede', door: 'Porta', window: 'Janela' };
-let project = prepareProject(restore());
+let project=prepareProject(defaultProject());
+let remodel=null;
+let plans=[];
+let stageId=null;
+let editing=null;
+let review=null;
+let savingStage=false;
+let sync;
 let windowTypeId = 'sliding';
 let itemsOpen = false;
 let itemsTab = 'placed';
@@ -80,46 +87,169 @@ function placementThickness() {
   return placementDefaults.wall.thicknessOverride ?? project.wallThickness;
 }
 
-function restore() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(storageKey));
-    if (saved && typeof saved.name === 'string' && Array.isArray(saved.walls) && Array.isArray(saved.openings)) {
-      // Upgrade only the untouched example that the previous release saved on first visit.
-      if (saved.example === true && JSON.stringify(saved) === JSON.stringify(legacyExampleProject())) return defaultProject();
-      return saved;
-    }
-  } catch {}
-  return defaultProject();
+function syncStatus(state,text) {
+  $('sync-dot').dataset.state=state;
+  $('share').title=text+' · clique para copiar o link';
+  $('save-status').textContent=text;
 }
 
-function persist() {
-  try {
-    localStorage.setItem(storageKey, JSON.stringify(project));
-  } catch {}
-  sync?.changed();
+function applyRemote(data) {
+  if (!data?.walls || !data?.openings) return;
+  const first=!remodel;
+  remodel=renovation({...data,...prepareProject(data)});
+  plans=stagePlans(remodel);
+  $('project-access').hidden=true;
+  $('editor').hidden=false;
+  $('timeline').hidden=false;
+  $('share').hidden=false;
+  displayStage(stageId);
+  if (first) fitPlan();
 }
 
-let sync = null;
-function syncStatus(state, text) {
-  $('sync-dot').dataset.state = state;
-  $('share').title = text + ' · clique para copiar o link';
-  $('save-status').innerHTML = (state==='ok' ? icon('check') + ' ' : '') + text;
-}
-
-function applyRemote(data, initial=false) {
-  if (!data || typeof data.name !== 'string' || !Array.isArray(data.walls) || !Array.isArray(data.openings)) return;
-  past.push(structuredClone(project));
-  if (past.length > 100) past.shift();
-  future.length = 0;
-  project = prepareProject(data);
-  try { localStorage.setItem(storageKey, JSON.stringify(project)); } catch {}
-  placementDefaults.wall.thicknessOverride=null;
+function displayStage(id) {
+  const index=remodel.stages.findIndex(stage=>stage.id===id);
+  stageId=index<0 ? null : id;
+  project=structuredClone(plans[index+1]);
+  project.surveyed=remodel.surveyed;
+  project.original=remodel.original;
+  past.length=future.length=0;
+  showOriginal=false;
   start=hover=preview=null;
+  tool='select';
+  placementPropertiesOpen=false;
+  placementDefaults.wall.thicknessOverride=null;
   resetSelection();
   resetMeasure();
-  if (tool==='measure') measureFaces=wallFaces(project.walls);
+  setItems(false);
+  cursor();
+  renderTimeline();
   refresh();
-  if (initial && view==='plan') fitPlan();
+}
+
+function renderTimeline() {
+  const list=$('stage-links');
+  const activeBefore=list.querySelector('[aria-current="step"]');
+  const previousScroll=list.scrollLeft;
+  list.replaceChildren();
+  const stages=[{id:null,title:'Original'},...remodel.stages];
+  if (editing && !stages.some(stage=>stage.id===editing.id)) {
+    stages.push({id:editing.id,title:'Nova etapa'});
+  }
+  for (const [number,stage] of stages.entries()) {
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='plain';
+    button.textContent=number ? 'Etapa '+number+' · '+stage.title : stage.title;
+    if (stage.id===stageId) button.setAttribute('aria-current','step');
+    button.disabled=savingStage;
+    button.onclick=()=>{
+      if (stageId===stage.id || !discardDraft()) return;
+      displayStage(stage.id);
+      list.querySelector('[aria-current="step"]')?.focus();
+    };
+    list.append(button);
+  }
+  list.scrollLeft=previousScroll;
+  if (!activeBefore || list.querySelector('[aria-current="step"]')?.textContent!==activeBefore.textContent) {
+    list.querySelector('[aria-current="step"]')?.scrollIntoView({block:'nearest',inline:'nearest'});
+  }
+  $('edit-stage').hidden=Boolean(!stageId || editing);
+  $('edit-stage').disabled=$('add-stage').disabled=savingStage;
+  $('add-stage').hidden=Boolean(editing);
+  $('stage-draft').hidden=!editing;
+  $('stage-name').disabled=$('save-stage').disabled=$('cancel-stage').disabled=savingStage;
+  const editingIndex=remodel.stages.findIndex(stage=>stage.id===editing?.id);
+  $('save-stage').textContent=editingIndex>=0 && editingIndex<remodel.stages.length-1 ? 'Revisar impacto' : 'Salvar etapa';
+}
+
+function discardDraft() {
+  if (!editing) return true;
+  if ((past.length || $('stage-name').value.trim()!==editing.title) &&
+      !window.confirm('Descartar as alterações desta etapa?')) return false;
+  stageId=editing.previous;
+  editing=null;
+  return true;
+}
+
+function editStage(create) {
+  if (editing || savingStage) return;
+  const existing=remodel.stages.find(stage=>stage.id===stageId);
+  if (!create && !existing) return;
+  const previous=stageId;
+  if (create) displayStage(remodel.stages.at(-1)?.id ?? null);
+  const id=create ? crypto.randomUUID() : existing.id;
+  const title=create ? '' : existing.title;
+  editing={id,title,previous};
+  stageId=id;
+  $('stage-name').value=title;
+  if (view!=='plan') setView('plan');
+  renderTimeline();
+  refresh();
+  $('stage-name').focus();
+}
+
+function summarizeConflict({path,opening,stage,number}) {
+  const kinds={walls:'parede',openings:opening?.type==='window' ? 'janela' : opening?.type==='door' ? 'porta' : 'porta ou janela',windowTypes:'tipo de janela',furniturePositions:'posição de móvel'};
+  return 'Etapa '+number+' · '+stage.title+' — '+(kinds[path[0]]??'configuração da planta')+
+    (opening ? ' ficou sem um encaixe válido.' : ' recebeu alterações incompatíveis.');
+}
+
+function saveStage() {
+  if (!editing || savingStage || $('review-dialog').open) return;
+  if (wallDrag || wallGroupDrag || openingDrag || furnitureDrag || dragging) {
+    toast('Termine o movimento antes de salvar a etapa.');
+    return;
+  }
+  const title=$('stage-name').value.trim();
+  if (!title) {
+    $('stage-name').focus();
+    toast('Dê um nome à etapa.');
+    return;
+  }
+  review=reviewStage(remodel,editing.id,title,project);
+  const later=remodel.stages.findIndex(stage=>stage.id===editing.id);
+  if (later<0 || later===remodel.stages.length-1) {
+    commitStage();
+    return;
+  }
+  const {impacted,conflicts}=review;
+  $('review-summary').textContent=impacted.length
+    ? 'Etapas que serão atualizadas — '+impacted.map(stage=>
+      (remodel.stages.indexOf(stage)+1)+' · '+stage.title).join(', ')+'.'
+    : 'As plantas das etapas seguintes ficam iguais.';
+  const list=$('review-conflicts');
+  list.replaceChildren(...[...new Set(conflicts.map(summarizeConflict))].map(message=>{
+    const item=document.createElement('li');
+    item.textContent=message;
+    return item;
+  }));
+  list.hidden=!conflicts.length;
+  $('confirm-review').textContent=conflicts.length ? 'Descartar conflitos e propagar' : 'Propagar e salvar';
+  $('review-dialog').returnValue='';
+  $('review-dialog').showModal();
+}
+
+async function commitStage() {
+  if (!review || !editing || savingStage) return;
+  savingStage=true;
+  const id=editing.id;
+  const draft=editing;
+  editing=null;
+  renderTimeline();
+  refresh();
+  const result=await sync.save(sharedRenovation(review.document));
+  savingStage=false;
+  review=null;
+  if (result==='saved') {
+    displayStage(id);
+    toast('Etapa salva.');
+  } else {
+    editing=draft;
+    if (result==='conflict') toast('Outra pessoa salvou primeiro. O rascunho segue aberto. Cancele a edição para carregar a versão da nuvem.');
+    else toast('O rascunho segue aberto. Confira a conexão e tente salvar novamente.');
+    renderTimeline();
+    refresh();
+  }
 }
 
 function toast(text) {
@@ -133,6 +263,7 @@ function toast(text) {
 }
 
 function commit(change, { structure = false, update = true } = {}) {
+  if (!editing) return;
   past.push(structuredClone(project));
   if (past.length > 100) past.shift();
   future.length = 0;
@@ -141,7 +272,6 @@ function commit(change, { structure = false, update = true } = {}) {
     delete project.template;
     delete project.example;
   }
-  persist();
   if (update) refresh();
 }
 
@@ -165,7 +295,7 @@ function resetSelection() {
 }
 
 function history(from, to) {
-  if (!from.length) return;
+  if (!editing || !from.length) return;
   to.push(project);
   project = from.pop();
   placementDefaults.wall.thicknessOverride=null;
@@ -173,7 +303,6 @@ function history(from, to) {
   resetSelection();
   resetMeasure();
   if (tool==='measure') measureFaces=wallFaces(project.walls);
-  persist();
   refresh();
 }
 
@@ -182,7 +311,7 @@ const world = p => ({ x: camera.x + (p.x - size.width / 2) / camera.scale, y: ca
 
 function fitPlan() {
   const originals=project.original?.walls ?? [];
-  const walls=view==='original' ? originals : showOriginal ? [...project.walls,...originals] : project.walls;
+  const walls=showOriginal ? [...project.walls,...originals] : project.walls;
   const box = bounds({walls});
   const exterior=siteExterior({walls});
   const x=exterior ? Math.min(box.x,exterior.garage.left) : box.x;
@@ -622,14 +751,6 @@ function draw() {
   context.clearRect(0,0,size.width,size.height);
   grid();
   updatePlanScale();
-  if (view==='original') {
-    const exterior=project.original && siteExterior(project.original);
-    paintExterior(exterior);
-    paintOriginal(false);
-    if (project.original) paintSurveyDimensions(project.original);
-    paintExteriorDimensions(exterior);
-    return;
-  }
   const drawing = wallGroupDrag?.change || wallDrag?.change || project;
   if (drawing===project) paintFootprint();
   const exterior=siteExterior(drawing);
@@ -748,7 +869,7 @@ function coordinate(event) {
 plan.addEventListener('pointerdown', event => {
   if (view === 'model' || ![0,1,2].includes(event.button)) return;
   const p = coordinate(event);
-  if (view==='original' || tool === 'pan' || event.button !== 0) {
+  if ((!editing && tool!=='measure') || tool === 'pan' || event.button !== 0) {
     dragging = { p, x:camera.x, y:camera.y };
     plan.setPointerCapture(event.pointerId);
     plan.style.cursor = 'grabbing';
@@ -834,7 +955,7 @@ function selectOnPlan(event,p,position) {
 
 plan.addEventListener('pointermove', event => {
   const p = coordinate(event);
-  if (view==='original' && !dragging) return;
+  if (!editing && tool!=='measure' && !dragging) return;
   if (furnitureDrag) {
     const {item,origin}=furnitureDrag;
     const target={x:item.x+(p.x-origin.x)/camera.scale,y:item.y+(p.y-origin.y)/camera.scale};
@@ -913,10 +1034,10 @@ plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !open
 plan.addEventListener('wheel',event => { event.preventDefault(); zoomPlan(Math.exp(-event.deltaY*.001),coordinate(event)); },{passive:false});
 plan.addEventListener('contextmenu',event => event.preventDefault());
 
-function cursor() { plan.style.cursor = view==='original' || tool==='pan' ? 'grab' : tool==='select' ? 'default' : 'crosshair'; }
+function cursor() { plan.style.cursor = (!editing && tool!=='measure') || tool==='pan' ? 'grab' : tool==='select' ? 'default' : 'crosshair'; }
 function setHint(text) { $('hint').textContent=text; }
 function setTool(next) {
-  if (view!=='plan') return;
+  if (view!=='plan' || (!editing && !['select','pan','measure'].includes(next))) return;
   if (next!==tool) {
     start=null;
     resetMeasure();
@@ -1354,13 +1475,12 @@ function remove() {
 
 function refresh() {
   const isPlan = view==='plan';
-  const isOriginal = view==='original';
-  const visibleProject=isOriginal ? project.original : project;
-  $('project-name').readOnly=isOriginal;
+  const visibleProject=project;
+  $('project-name').readOnly=true;
   $('project-name').value=project.name;
   $('project-count').textContent=visibleProject
     ? visibleProject.walls.length+' paredes · '+visibleProject.openings.length+' aberturas' : '';
-  $('mode').textContent=isOriginal ? 'Planta original' : isPlan ? tools[tool][0] : 'Navegação 3D';
+  $('mode').textContent=isPlan ? tools[tool][0] : 'Navegação 3D';
   let hint=tools[tool][1];
   if (tool==='measure') hint=measurementHint();
   if (tool==='window') hint=activeWindowType().name+' · clique em uma parede.';
@@ -1374,16 +1494,15 @@ function refresh() {
   if (tool==='select' && selected && selected.type!=='wall') hint=selected.type==='furniture'
     ? selected.name+' selecionado. Arraste para mudar a posição.'
     : 'Arraste o item para outro trecho de parede.';
-  if (isOriginal) setHint(project.original ? 'Arraste para navegar pela planta original.' : 'Salve a planta 2D atual como referência da reforma.');
-  else setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
+  if (isPlan && !editing && tool==='select') {
+    hint=stageId ? 'Arraste para navegar. Use Editar etapa para alterar o desenho.' : 'Planta original · arraste para navegar.';
+  }
+  setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
   $('model-button').setAttribute('aria-pressed',String(view==='model'));
-  $('original-button').setAttribute('aria-pressed',String(isOriginal));
-  $('original-actions').hidden=!isOriginal && (!isPlan || !project.original);
-  $('save-original').hidden=!isOriginal;
-  $('save-original').textContent=project.original ? 'Substituir original' : 'Salvar original';
+  $('original-actions').hidden=!isPlan || !stageId;
   const eye=$('toggle-original');
-  eye.hidden=!isPlan || !project.original;
+  eye.hidden=!isPlan || !stageId;
   eye.setAttribute('aria-pressed',String(Boolean(showOriginal && project.original)));
   eye.innerHTML=icon(showOriginal ? 'eye' : 'eyeOff');
   eye.title=showOriginal ? 'Ocultar planta original' : 'Mostrar planta original';
@@ -1393,15 +1512,14 @@ function refresh() {
   $('orientation').hidden=view==='model';
   $('scale-bar').hidden=view==='model';
   $('empty').hidden=project.walls.length>0 || !isPlan || tool!=='select';
-  $('undo').disabled=!past.length || isOriginal;
-  $('redo').disabled=!future.length || isOriginal;
-  $('items-toggle').disabled=isOriginal;
-  $('new').disabled=isOriginal;
+  $('undo').disabled=!past.length || !editing;
+  $('redo').disabled=!future.length || !editing;
+  $('items-toggle').disabled=!editing;
   $('magnetism').disabled=!isPlan;
   $('magnetism').setAttribute('aria-pressed',String(magnetism));
   $('magnetism').title='Magnetismo '+(magnetism?'ligado':'desligado')+' (G)';
   document.querySelectorAll('[data-tool]').forEach(button => {
-    button.disabled=!isPlan;
+    button.disabled=!isPlan || (!editing && !['select','pan','measure'].includes(button.dataset.tool));
     button.setAttribute('aria-pressed',String(isPlan && button.dataset.tool===tool));
   });
   inspector();
@@ -1496,7 +1614,6 @@ async function setView(next) {
   const isModel=next==='model';
   plan.hidden=isModel;
   $('model').hidden=!isModel;
-  if (next==='original') setItems(false);
   cursor();
   refresh();
   if (!isModel) {
@@ -1563,16 +1680,6 @@ $('kitchen-photo').onchange=async event => {
     input.value='';
   }
 };
-$('original-button').onclick=() => setView('original');
-$('save-original').onclick=() => {
-  if (view!=='original') return;
-  if (project.original && !window.confirm('Substituir a planta original pela planta 2D atual?')) return;
-  const {original, ...current}=project;
-  const snapshot=structuredClone(current);
-  commit(() => { project.original=snapshot; });
-  showOriginal=true;
-  toast('Planta original salva.');
-};
 $('toggle-original').onclick=() => {
   showOriginal=!showOriginal;
   refresh();
@@ -1582,11 +1689,6 @@ $('zoom-in').onclick=() => zoom(1.2);
 $('zoom-out').onclick=() => zoom(1/1.2);
 $('undo').onclick=() => history(past,future);
 $('redo').onclick=() => history(future,past);
-$('project-name').onchange=event => {
-  const name=event.target.value.trim() || 'Sem título';
-  if (name!==project.name) commit(() => { project.name=name; },{update:false});
-  refresh();
-};
 document.querySelectorAll('[data-tool]').forEach(button => { button.onclick=() => setTool(button.dataset.tool); });
 $('close-properties').onclick=() => {
   if (placementTools.includes(tool)) placementPropertiesOpen=false;
@@ -1604,22 +1706,15 @@ $('magnetism').onclick=() => {
 $('close-items').onclick=() => { setItems(false); $('items-toggle').focus(); };
 $('placed-items').onclick=() => setItems(true,'placed');
 $('catalog-items').onclick=() => setItems(true,'catalog');
-$('new').onclick=() => { $('new-dialog').returnValue=''; $('new-dialog').showModal(); };
-$('new-dialog').onclose=() => {
-  const choice=$('new-dialog').returnValue;
-  if (!['blank','template','survey'].includes(choice)) return;
-  showOriginal=false;
-  start=hover=preview=null;
-  resetSelection();
-  commit(() => {
-    const next=choice==='survey' ? surveyProject() : choice==='template' ? defaultProject() : {name:'Sem título',walls:[],openings:[]};
-    project=prepareProject(next);
-    placementDefaults.wall.thicknessOverride=null;
-  });
-  if (view!=='plan') setView('plan');
-  setTool(choice==='blank' ? 'wall' : 'select');
-  fitPlan();
+$('edit-stage').onclick=()=>editStage(false);
+$('add-stage').onclick=()=>editStage(true);
+$('cancel-stage').onclick=()=>{ if (discardDraft()) displayStage(stageId); };
+$('save-stage').onclick=saveStage;
+$('review-dialog').onclose=()=>{
+  if ($('review-dialog').returnValue==='apply') commitStage();
+  else review=null;
 };
+
 $('survey-notes').onclick=() => {
   $('survey-door-a').textContent=unit.format(surveyDoors.aWidth)+' cm de largura × '+unit.format(surveyDoors.aHeight)+' cm de altura';
   $('survey-door-b').textContent=unit.format(surveyDoors.bWidth)+' cm de largura';
@@ -1703,7 +1798,7 @@ document.addEventListener('keyup',event => {
 });
 
 document.addEventListener('keydown',event => {
-  if (view==='original' || event.target.matches('input,select,textarea') || $('new-dialog').open || $('survey-dialog').open) return;
+  if (!remodel || event.target.matches('input,select,textarea') || $('review-dialog').open || $('survey-dialog').open) return;
   const key=event.key.toLowerCase();
   if ((event.metaKey || event.ctrlKey) && ['z','y'].includes(key)) {
     event.preventDefault();
@@ -1721,7 +1816,7 @@ document.addEventListener('keydown',event => {
     }
     return;
   }
-  if (key==='i') { setItems(!itemsOpen); return; }
+  if (key==='i' && editing) { setItems(!itemsOpen); return; }
   if (view!=='plan') return;
   if (key==='g') { $('magnetism').click(); return; }
   const shortcuts={v:'select',p:'wall',d:'door',j:'window',r:'measure',m:'pan'};
@@ -1732,23 +1827,38 @@ document.addEventListener('keydown',event => {
 
 new ResizeObserver(resize).observe(stage);
 document.fonts?.ready.then(draw);
-persist();
-refresh();
-sync = startSync({
-  getProject: () => project,
-  applyRemote,
-  isBusy: () => Boolean(start || dragging || wallDrag || wallGroupDrag || openingDrag || furnitureDrag || measureStart || $('new-dialog').open || $('survey-dialog').open || document.activeElement?.matches('input,select,textarea')),
-  status: syncStatus
+$('share').hidden=true;
+$('access-form').onsubmit=event=>{
+  event.preventDefault();
+  const input=$('access-link');
+  let code;
+  try { code=projectCode(new URL(input.value).hash); } catch {}
+  input.setCustomValidity(code ? '' : 'Use o link da reforma que termina com #p= e o código de acesso.');
+  if (!input.reportValidity()) return;
+  location.hash='p='+code;
+  location.reload();
+};
+$('access-link').oninput=event=>event.target.setCustomValidity('');
+window.addEventListener('beforeunload',event=>{
+  if (editing && (past.length || $('stage-name').value.trim()!==editing.title)) event.preventDefault();
 });
-$('share').onclick = async () => {
-  const link = sync.link();
-  if (!await sync.flush()) { toast('Sem conexão. Tente de novo quando a internet voltar.'); return; }
+sync=startSync({
+  applyRemote,
+  isBusy:()=>Boolean(editing || savingStage || dragging || $('survey-dialog').open),
+  status:syncStatus,
+  unavailable:message=>{ $('access-message').textContent=message; }
+});
+$('share').onclick=async ()=>{
+  const url=sync.link();
+  if (!url) return;
   try {
-    if (navigator.share && matchMedia('(pointer: coarse)').matches) { await navigator.share({ title: 'Traço Planta – ' + project.name, url: link }); return; }
-    await navigator.clipboard.writeText(link);
-    toast('Link copiado. Abra-o no outro aparelho para editar o mesmo projeto.');
+    if (navigator.share && matchMedia('(pointer: coarse)').matches) {
+      await navigator.share({title:'Traço Planta – '+project.name,url});
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    toast('Link compartilhado copiado.');
   } catch (error) {
-    if (error?.name === 'AbortError') return;
-    window.prompt('Copie este link e abra no outro aparelho:', link);
+    if (error?.name!=='AbortError') window.prompt('Copie este link e abra no outro aparelho:',url);
   }
 };

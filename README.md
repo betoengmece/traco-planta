@@ -23,12 +23,12 @@ Abra [http://127.0.0.1:4173](http://127.0.0.1:4173). Não há instalação de pa
 
 - `dist/sync.mjs` sincroniza o projeto entre aparelhos pelo Supabase.
 
-## Sincronização entre aparelhos
+## Etapas da reforma
 
-Cada projeto tem um código secreto que fica no link (`#p=...`). O editor salva no navegador e, logo em seguida, na nuvem (tabela `planta_projetos` do Supabase, acessível só pelas funções `planta_get` e `planta_save`). A cada 5 segundos, e sempre que a aba volta ao primeiro plano, ele busca alterações feitas em outro aparelho.
+Abra o link compartilhado da reforma, identificado pelo código no fragmento `#p=...`. Use **Copiar link** para abrir a mesma reforma em outro aparelho. O endereço de acesso permite consultar e editar as etapas.
 
-Para abrir no outro aparelho, toque no botão de link no topo e abra o link copiado. Quem tiver o link pode ver e editar o projeto. Sem internet, o editor continua salvando no aparelho e envia quando a conexão voltar.
+A linha do tempo parte da **Original** protegida. Cada etapa guarda as diferenças em relação à etapa anterior. Para corrigir uma etapa antiga, revise o impacto e confirme a propagação. O editor aponta operações incompatíveis e preserva as demais.
 
-O catálogo de mobília ainda está pendente.
+`dist/renovation.mjs` calcula e reaplica as diferenças. `dist/sync.mjs` consulta o Supabase e usa a versão da reforma para impedir que uma gravação substitua alterações mais recentes. O editor salva as etapas na nuvem ao confirmar a edição.
 
 A versão publicada fica em https://betoengmece.github.io/traco-planta/ e é atualizada automaticamente a cada envio para o `main`.

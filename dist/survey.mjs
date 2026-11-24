@@ -318,7 +318,7 @@ export function lowerLeftDoorDimensions(project) {
 }
 
 export function rearBathroomDimensions(project) {
-  if (project.original?.template!=='survey' || project.template==='survey') return [];
+  if ((!project.surveyed && project.original?.template!=='survey') || project.template==='survey') return [];
   const walls=new Map(project.walls.map(wall=>[wall.id,wall]));
   const left=walls.get('annex-upper'),right=walls.get('right-annex');
   const top=walls.get('annex-top'),bottom=walls.get('annex-bottom');

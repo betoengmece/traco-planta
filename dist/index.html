@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Desenhe paredes, portas e janelas e explore a planta em 3D.">
 <title>Traço Planta</title>
-<link rel="stylesheet" href="./style.css?v=20261122-andar">
+<link rel="stylesheet" href="./style.css?v=20261124-etapas">
 </head>
 <body>
 <header class="top">
@@ -14,15 +14,37 @@
   <div class="view-toggle" aria-label="Modo de visualização">
     <button id="plan-button" aria-label="Planta 2D" aria-pressed="true"><i data-icon="plan"></i> <span>2D</span></button>
     <button id="model-button" aria-label="Vista 3D" aria-pressed="false"><i data-icon="cube"></i> <span>3D</span></button>
-    <button id="original-button" aria-pressed="false">Original</button>
   </div>
   <div class="top-actions">
     <span id="save-status" class="save-status" role="status"></span>
     <button id="share" class="plain" title="Copiar o link para abrir em outro aparelho" aria-label="Copiar link do projeto"><i data-icon="link"></i><span>Copiar link</span><b id="sync-dot" class="sync-dot" data-state="busy" aria-hidden="true"></b></button>
-    <button id="new" class="plain" title="Novo projeto" aria-label="Novo projeto"><i data-icon="file"></i><span>Novo projeto</span></button>
   </div>
 </header>
-<main>
+<nav class="timeline" id="timeline" aria-label="Etapas da reforma" hidden>
+  <div id="stage-links" class="stage-links"></div>
+  <div class="stage-actions">
+    <button id="edit-stage" class="plain" type="button" hidden>Editar etapa</button>
+    <button id="add-stage" class="plain" type="button">+ Nova etapa</button>
+  </div>
+  <div id="stage-draft" class="stage-draft" hidden>
+    <label for="stage-name">Nome da etapa</label>
+    <input id="stage-name" maxlength="70">
+    <div class="stage-actions">
+      <button id="cancel-stage" class="plain" type="button">Cancelar</button>
+      <button id="save-stage" class="primary" type="button">Salvar etapa</button>
+    </div>
+  </div>
+</nav>
+<section id="project-access" class="project-access" aria-labelledby="access-title">
+  <h1 id="access-title">Reforma da casa</h1>
+  <p id="access-message" role="status">Carregando a reforma…</p>
+  <form id="access-form">
+    <label for="access-link">Link compartilhado</label>
+    <input id="access-link" type="url" placeholder="Cole o link da reforma" required>
+    <button class="primary">Abrir reforma</button>
+  </form>
+</section>
+<main id="editor" hidden>
   <aside class="tools" aria-label="Ferramentas">
     <div class="tool-list">
       <button aria-keyshortcuts="V" data-tool="select" aria-label="Selecionar" title="Selecionar (V)" aria-pressed="true"><i data-icon="cursor"></i><kbd aria-hidden="true">V</kbd></button>
@@ -76,7 +98,6 @@
         <div id="properties"></div>
       </aside>
       <div id="original-actions" class="original-actions" hidden>
-        <button id="save-original" class="plain" type="button">Salvar original</button>
         <button id="toggle-original" class="plain" type="button" aria-pressed="false" aria-label="Mostrar planta original sob a reforma" title="Mostrar planta original sob a reforma" hidden><i data-icon="eye"></i></button>
       </div>
       <div class="camera">
@@ -89,7 +110,17 @@
     <footer class="workspace-foot"><strong id="mode"></strong><span id="hint" aria-live="polite"></span><span id="project-count"></span></footer>
   </section>
 </main>
-<dialog id="new-dialog"><form method="dialog"><h2>Novo projeto</h2><p>Escolha uma planta inicial ou comece em branco. Use Desfazer para voltar à planta atual antes de recarregar.</p><div><button value="cancel" class="plain">Cancelar</button><button value="blank" class="plain">Em branco</button><button value="template" class="plain">Usar planta padrão</button><button value="survey" class="primary">Levantamento da casa</button></div></form></dialog>
+<dialog id="review-dialog" aria-labelledby="review-title">
+  <form method="dialog">
+    <h2 id="review-title">Revisar impacto</h2>
+    <p id="review-summary"></p>
+    <ul id="review-conflicts" hidden></ul>
+    <div>
+      <button class="plain" value="back">Voltar à edição</button>
+      <button class="primary" id="confirm-review" value="apply">Propagar e salvar</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="survey-dialog"><form method="dialog">
   <h2>Notas das cotas</h2>
   <p>As medidas marcadas com + T no croqui já incluem os 7 cm da trena. O símbolo ≈ indica uma medida aproximada. As cotas tracejadas com * são referências do croqui que precisam de conferência.</p>
@@ -106,6 +137,6 @@
   <div><button class="primary">Fechar</button></div>
 </form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
-<script type="module" src="./app.mjs?v=20261122-ressalto-final"></script>
+<script type="module" src="./app.mjs?v=20261124-etapas"></script>
 </body>
 </html>

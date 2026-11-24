@@ -183,3 +183,33 @@ dialog form>div{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:7px}
 
 .survey-notes{position:absolute;top:12px;left:12px;background:var(--surface,#fff);z-index:1}
 #survey-dialog li{margin-bottom:8px;font-size:.9375rem;line-height:1.4}
+
+/* The timeline can grow along the scroll axis without shrinking the drawing. */
+body{height:100dvh;display:flex;flex-direction:column}
+.top{flex:none}
+main{height:auto;flex:1}
+.timeline{display:flex;align-items:center;gap:8px;flex:none;padding:6px 12px;
+  border-bottom:1px solid var(--line);background:var(--white)}
+.stage-links{display:flex;min-width:0;flex:1;gap:5px;overflow-x:auto;overscroll-behavior-x:contain;padding:3px}
+.stage-links button,.stage-actions button{flex:none;white-space:nowrap;min-height:34px}
+.stage-links button{max-width:210px;overflow:hidden;text-overflow:ellipsis}
+.stage-links [aria-current="step"]{background:#e1f3e8;border-color:#89b6a6;color:#174f42;font-weight:700}
+.stage-actions,.stage-draft{display:flex;align-items:center;gap:6px}
+.stage-draft label{font-size:.82rem;white-space:nowrap}
+.stage-draft input,.project-access input{min-width:0;border:1px solid var(--line);border-radius:7px;
+  color:var(--ink);background:var(--white);font:inherit;padding:6px 8px}
+.project-access{width:min(100% - 32px,490px);margin:clamp(26px,9vh,70px) auto}
+.project-access form{display:grid;gap:8px;justify-items:start}
+.project-access input{width:100%}
+.project-access p,#review-conflicts{color:var(--muted)}
+#review-conflicts{max-height:34vh;overflow:auto;font-size:.9rem;padding-left:20px}
+#review-conflicts li+li{margin-top:6px}
+.timeline[hidden],.stage-draft[hidden],#editor[hidden],[hidden]{display:none!important}
+@media(max-width:690px){
+  .timeline{flex-wrap:wrap;padding:4px 7px;gap:4px}
+  .stage-links button{max-width:150px}
+  .stage-draft{width:100%;gap:4px}
+  .stage-draft input{width:1px;flex:1}
+  .stage-draft label{font-size:.74rem}
+  .stage-actions button{padding-inline:6px}
+}
