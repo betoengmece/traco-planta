@@ -29,31 +29,57 @@ export function interiorLayout(project) {
       : kind==='shelves'
         ? {axis:'x',min:room.left+halfX+.10,max:room.right-halfX-.10}
         : null;
-    items.push(positionedFurniture(project,{id:room.name+':'+kind,kind,x,y,width,depth,rotation,blocks,slide}));
+    const baseId=room.name+':'+kind;
+    const id=items.some(item=>item.id===baseId) ? baseId+':2' : baseId;
+    const useProposedPosition=(option && room.name==='Cozinha') || (swap && room.name==='Quarto');
+    const spec={id,kind,x,y,width,depth,rotation,blocks,slide};
+    items.push(useProposedPosition ? spec : positionedFurniture(project,spec));
   }
 
   const kitchenWall=vertical('right-main');
   const kitchenLeft=vertical('middle-divider');
   const kitchenTop=horizontal('annex-bottom');
   const kitchenBottom=horizontal('strip-top');
-  const window=project.openings.find(opening=>opening.id==='window-2' && opening.wallId===kitchenWall?.id && opening.type==='window');
-  if (kitchenWall && kitchenLeft && kitchenTop && kitchenBottom && window) {
-    const kitchen=room('Cozinha',kitchenLeft.a.x,kitchenWall.a.x,kitchenTop.a.y,kitchenBottom.a.y,'terracotta','slats');
+  const divider=vertical('proposal-bedroom-divider');
+  const option=project.kitchenOption;
+  const swap=Boolean(divider && (option==='linear' || option==='l'));
+  const window=project.openings.find(opening=>opening.wallId===kitchenWall?.id && opening.type==='window');
+  if (kitchenWall && kitchenLeft && kitchenTop && kitchenBottom) {
+    const kitchen=swap ? null : room('Cozinha',kitchenLeft.a.x,kitchenWall.a.x,kitchenTop.a.y,kitchenBottom.a.y,'terracotta','slats');
+    if (swap) {
+      room('Corredor',kitchenLeft.a.x,divider.a.x,kitchenTop.a.y,kitchenBottom.a.y,'parquet','slats');
+      const next=room('Quarto',divider.a.x,kitchenWall.a.x,kitchenTop.a.y,kitchenBottom.a.y,'grayTile','slats');
+      if (next) {
+        const {left,right,top,bottom}=next;
+        item('bed',next,right-.95,bottom-1.05,1.38,1.88,2);
+        item('wardrobe',next,left+.76,top+.39,1.24,.60);
+        item('nightstand',next,right-.22,bottom-.33,.25,.36,2);
+      }
+    }
     if (kitchen && kitchen.right-kitchen.left>=2.9 && kitchen.bottom-kitchen.top>=2.8) {
       const {left,right,top,bottom}=kitchen;
-      const windowY=kitchenWall.a.y+(kitchenWall.b.y-kitchenWall.a.y)*window.t;
+      const windowY=window ? kitchenWall.a.y+(kitchenWall.b.y-kitchenWall.a.y)*window.t : (top+bottom)/2;
       const counterY=Math.min(bottom-1.32,Math.max(top+.82,windowY));
-      item('sink',kitchen,right-.40,counterY,1.36,.60,3);
-      item('stove',kitchen,right-.40,counterY+1.03,.56,.60,3);
-      item('fridge',kitchen,right-1.52,top+.43,.65,.65);
-      item('table',kitchen,left+.53,(top+bottom)/2,1.04,.72,1);
-      item('chair',kitchen,left+.55,(top+bottom)/2-.73,.38,.39,2,false);
-      item('wallCabinet',kitchen,left+.30,(top+bottom)/2,1.26,.34,1,false);
-      item('cabinet',kitchen,right-1.43,bottom-.33,.92,.43,2);
+      if (option==='current') {
+        item('sink',kitchen,right-.38,counterY,.90,.60,3);
+        item('cabinet',kitchen,right-.38,counterY-.75,.60,.60,3);
+        item('stove',kitchen,right-.38,counterY+.80,.60,.60,3);
+        item('fridge',kitchen,right-1.64,bottom-.44,.65,.65,2);
+        item('wallCabinet',kitchen,right-.25,bottom-.48,.62,.35,3,false);
+        item('table',kitchen,left+.42,(top+bottom)/2+.40,1,.60,1);
+      } else {
+        item('sink',kitchen,right-.40,counterY,1.36,.60,3);
+        item('stove',kitchen,right-.40,counterY+1.03,.56,.60,3);
+        item('fridge',kitchen,right-1.52,top+.43,.65,.65);
+        item('table',kitchen,left+.53,(top+bottom)/2,1.04,.72,1);
+        item('chair',kitchen,left+.55,(top+bottom)/2-.73,.38,.39,2,false);
+        item('wallCabinet',kitchen,left+.30,(top+bottom)/2,1.26,.34,1,false);
+        item('cabinet',kitchen,right-1.43,bottom-.33,.92,.43,2);
+      }
     }
     const nook=vertical('annex-lower');
     const nookTop=horizontal('entry');
-    if (nook && nookTop) room('Cozinha',kitchenLeft.a.x,nook.a.x,nookTop.a.y,kitchenTop.a.y,'terracotta','slats',false);
+    if (nook && nookTop) room(swap ? 'Corredor' : 'Cozinha',kitchenLeft.a.x,nook.a.x,nookTop.a.y,kitchenTop.a.y,swap ? 'parquet' : 'terracotta','slats',false);
     const hallRight=vertical('strip-side');
     const hallEnd=horizontal('rear-entry');
     if (hallRight && hallEnd) room('Corredor',kitchenLeft.a.x,hallRight.a.x,kitchenBottom.a.y,hallEnd.a.y,'parquet','slats');
@@ -64,7 +90,23 @@ export function interiorLayout(project) {
   const bedroomTop=horizontal('top-left');
   const bedroomEnd=horizontal('left-cross');
   if (bedroomLeft && bedroomRight && bedroomTop && bedroomEnd) {
-    const bedroom=room('Quarto',bedroomLeft.a.x,bedroomRight.a.x,bedroomTop.a.y,bedroomEnd.a.y,'grayTile','slats');
+    if (swap) {
+      const next=room('Cozinha',bedroomLeft.a.x,bedroomRight.a.x,bedroomTop.a.y,bedroomEnd.a.y,'terracotta','slats');
+      if (next) {
+        const {left,top,bottom}=next;
+        const line=option==='linear';
+        const x=left+(line ? .18 : .73);
+        const y=bottom-.38;
+        item('sink',next,x+.45,y,.90,.60,2);
+        item('cabinet',next,x+1.20,y,.60,.60,2);
+        item('stove',next,x+1.80,y,.60,.60,2);
+        item('wallCabinet',next,x+.75,bottom-.26,1.50,.35,2,false);
+        item('fridge',next,line ? x+2.445 : left+.46,line ? y : top+.43,.65,.65,line ? 2 : 0);
+        if (!line) item('cabinet',next,left+.38,bottom-1.06,.70,.60,1);
+        item('table',next,left+1.58,top+1.26,1,.65);
+      }
+    }
+    const bedroom=swap ? null : room('Quarto',bedroomLeft.a.x,bedroomRight.a.x,bedroomTop.a.y,bedroomEnd.a.y,'grayTile','slats');
     if (bedroom && bedroom.right-bedroom.left>=2.75 && bedroom.bottom-bedroom.top>=2.85) {
       const {left,right,top,bottom}=bedroom;
       item('bed',bedroom,left+.84,top+1.08,1.38,1.90);

@@ -1,6 +1,7 @@
+import { kitchenOptionPlan, kitchenOptions } from './kitchen-options.mjs';
 import { siteExterior } from './site-exterior.mjs';
 import { furnitureFootprint, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261122-banheiros';
-import { interiorLayout } from './interior-layout.mjs?v=20261122-banheiros';
+import { interiorLayout } from './interior-layout.mjs?v=20261126-opcoes';
 import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
@@ -37,6 +38,7 @@ let project=prepareProject(defaultProject());
 let remodel=null;
 let plans=[];
 let stageId=null;
+let optionId=null;
 let editing=null;
 let review=null;
 let savingStage=false;
@@ -102,14 +104,20 @@ function applyRemote(data) {
   $('editor').hidden=false;
   $('timeline').hidden=false;
   $('share').hidden=false;
-  displayStage(stageId);
+  displayStage(stageId,optionId);
   if (first) fitPlan();
 }
 
-function displayStage(id) {
+function displayStage(id,proposal=null) {
+  const optionPlan=proposal ? kitchenOptionPlan(remodel.original,proposal) : null;
+  if (proposal && !optionPlan) {
+    toast('A geometria atual não comporta esta opção de planta.');
+    proposal=null;
+  }
+  optionId=proposal;
   const index=remodel.stages.findIndex(stage=>stage.id===id);
   stageId=index<0 ? null : id;
-  project=structuredClone(plans[index+1]);
+  project=optionPlan ?? structuredClone(plans[index+1]);
   project.surveyed=remodel.surveyed;
   project.original=remodel.original;
   past.length=future.length=0;
@@ -140,10 +148,10 @@ function renderTimeline() {
     button.type='button';
     button.className='plain';
     button.textContent=number ? 'Etapa '+number+' · '+stage.title : stage.title;
-    if (stage.id===stageId) button.setAttribute('aria-current','step');
+    if (!optionId && stage.id===stageId) button.setAttribute('aria-current','step');
     button.disabled=savingStage;
     button.onclick=()=>{
-      if (stageId===stage.id || !discardDraft()) return;
+      if ((!optionId && stageId===stage.id) || !discardDraft()) return;
       displayStage(stage.id);
       list.querySelector('[aria-current="step"]')?.focus();
     };
@@ -153,10 +161,19 @@ function renderTimeline() {
   if (!activeBefore || list.querySelector('[aria-current="step"]')?.textContent!==activeBefore.textContent) {
     list.querySelector('[aria-current="step"]')?.scrollIntoView({block:'nearest',inline:'nearest'});
   }
-  $('edit-stage').hidden=Boolean(editing);
+  const options=$('kitchen-options');
+  options.hidden=Boolean(editing);
+  for (const button of options.querySelectorAll('button')) {
+    button.setAttribute('aria-pressed',String(button.dataset.option===optionId));
+    button.disabled=savingStage;
+  }
+  const details=$('kitchen-option-detail');
+  details.hidden=!optionId;
+  details.textContent=optionId ? kitchenOptions.find(option=>option.id===optionId).detail : '';
+  $('edit-stage').hidden=Boolean(editing || optionId);
   $('edit-stage').textContent=stageId===null ? 'Editar Original' : 'Editar etapa';
   $('edit-stage').disabled=$('add-stage').disabled=savingStage;
-  $('add-stage').hidden=Boolean(editing);
+  $('add-stage').hidden=Boolean(editing || optionId);
   $('stage-draft').hidden=!editing;
   const editingOriginal=editing?.id===null;
   $('original-edit-warning').hidden=!editingOriginal;
@@ -1507,7 +1524,7 @@ function refresh() {
     ? selected.name+' selecionado. Arraste para mudar a posição.'
     : 'Arraste o item para outro trecho de parede.';
   if (isPlan && !editing && tool==='select') {
-    hint=stageId ? 'Arraste para navegar. Use Editar etapa para alterar o desenho.' : 'Planta original · arraste para navegar.';
+    hint=optionId ? 'Estudo de layout · navegue ou alterne para 3D.' : stageId ? 'Arraste para navegar. Use Editar etapa para alterar o desenho.' : 'Planta original · arraste para navegar.';
   }
   setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
@@ -1642,7 +1659,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261122-ressalto');
+    const { createModel }=await import('./model.mjs?v=20261126-opcoes');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
@@ -1718,6 +1735,15 @@ $('magnetism').onclick=() => {
 $('close-items').onclick=() => { setItems(false); $('items-toggle').focus(); };
 $('placed-items').onclick=() => setItems(true,'placed');
 $('catalog-items').onclick=() => setItems(true,'catalog');
+for (const {id,title} of kitchenOptions) {
+  const button=document.createElement('button');
+  button.type='button';
+  button.className='plain';
+  button.dataset.option=id;
+  button.textContent=title;
+  button.onclick=()=>{ if (!savingStage && discardDraft()) displayStage(null,id); };
+  $('kitchen-options').append(button);
+}
 $('edit-stage').onclick=()=>editStage(false);
 $('add-stage').onclick=()=>editStage(true);
 $('cancel-stage').onclick=()=>{ if (discardDraft()) displayStage(stageId); };

@@ -218,3 +218,8 @@ main{height:auto;flex:1}
 @media(max-width:460px){
   .stage-draft:has(#original-edit-warning:not([hidden])){flex-wrap:wrap}
 }
+
+.timeline{flex-wrap:wrap}
+.kitchen-options{flex:0 0 100%;padding-top:0}
+.kitchen-options [aria-pressed="true"]{background:#e1f3e8;border-color:#89b6a6;color:#174f42;font-weight:700}
+.kitchen-option-detail{flex:0 0 100%;margin:0;padding:2px 4px 3px;color:var(--muted);font-size:.82rem}
