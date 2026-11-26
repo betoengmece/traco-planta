@@ -37,16 +37,21 @@ export function interiorLayout(project) {
   const kitchenLeft=vertical('middle-divider');
   const kitchenTop=horizontal('annex-bottom');
   const kitchenBottom=horizontal('strip-top');
-  const divider=vertical('proposal-bedroom-divider');
   const option=project.kitchenOption;
-  const swap=Boolean(divider && (option==='linear' || option==='l'));
+  const integrated=option==='integrada' && !walls.has('left-cross');
+  const corridorEdge=vertical('strip-side');
+  const divider=vertical('proposal-bedroom-divider') ?? (integrated && project.walls.find(wall=>
+    corridorEdge && wall.id!==corridorEdge.id && Math.abs(wall.a.x-corridorEdge.a.x)<.01 &&
+    Math.abs(wall.a.x-wall.b.x)<.01 && Math.min(wall.a.y,wall.b.y)<=kitchenTop?.a.y &&
+    Math.max(wall.a.y,wall.b.y)>=kitchenBottom?.a.y));
+  const swap=Boolean(divider && (integrated || option==='linear' || option==='l'));
   const window=project.openings.find(opening=>opening.wallId===kitchenWall?.id && opening.type==='window');
   if (kitchenWall && kitchenLeft && kitchenTop && kitchenBottom) {
     const kitchen=swap ? null : room('Cozinha',kitchenLeft.a.x,kitchenWall.a.x,kitchenTop.a.y,kitchenBottom.a.y,'terracotta','slats');
     if (swap) {
       room('Corredor',kitchenLeft.a.x,divider.a.x,kitchenTop.a.y,kitchenBottom.a.y,'parquet','slats');
       const next=room('Quarto',divider.a.x,kitchenWall.a.x,kitchenTop.a.y,kitchenBottom.a.y,'grayTile','slats');
-      if (next) {
+      if (next && !integrated) {
         const {left,right,top,bottom}=next;
         item('bed',next,right-.95,bottom-1.05,1.38,1.88,2);
         item('wardrobe',next,left+.76,top+.39,1.24,.60);
@@ -86,6 +91,10 @@ export function interiorLayout(project) {
   const bedroomRight=vertical('upper-divider');
   const bedroomTop=horizontal('top-left');
   const bedroomEnd=horizontal('left-cross');
+  if (integrated && bedroomLeft && bedroomRight && bedroomTop) {
+    const end=horizontal('left-base');
+    if (end) room('Cozinha',bedroomLeft.a.x,bedroomRight.a.x,bedroomTop.a.y,end.a.y,'terracotta','slats');
+  }
   if (bedroomLeft && bedroomRight && bedroomTop && bedroomEnd) {
     if (swap) {
       const next=room('Cozinha',bedroomLeft.a.x,bedroomRight.a.x,bedroomTop.a.y,bedroomEnd.a.y,'terracotta','slats');

@@ -7,7 +7,7 @@ import { surveyOutline } from './survey.mjs?v=20261122-janela-cozinha';
 import { canStand, eyeHeight, walkBarriers, walkSpawn, walkStep } from './walk.mjs';
 import { createGardenView } from './garden-view.mjs';
 import { livingRoomFurniture } from './living-room.mjs?v=20261126-catalogo';
-import { interiorLayout } from './interior-layout.mjs?v=20261126-catalogo';
+import { interiorLayout } from './interior-layout.mjs?v=20261126-reforma3';
 import { makeInterior } from './interior-model.mjs?v=20261126-catalogo';
 import { siteExterior } from './site-exterior.mjs';
 import { makeExterior } from './exterior-model.mjs?v=20261122-ressalto';

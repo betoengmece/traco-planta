@@ -1,7 +1,7 @@
 import { kitchenOptionPlan, kitchenOptions } from './kitchen-options.mjs?v=20261126-catalogo';
 import { siteExterior } from './site-exterior.mjs';
 import { furnitureCatalog, furnitureContains, furnitureCopy, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261126-catalogo';
-import { interiorLayout } from './interior-layout.mjs?v=20261126-catalogo';
+import { interiorLayout } from './interior-layout.mjs?v=20261126-reforma3';
 import { livingRoomFurniture } from './living-room.mjs?v=20261126-catalogo';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
@@ -1750,7 +1750,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261126-catalogo');
+    const { createModel }=await import('./model.mjs?v=20261126-reforma3');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
