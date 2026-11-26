@@ -125,6 +125,9 @@ export function makeInterior() {
     }
 
     switch(spec.kind) {
+      case 'block':
+        add(0,spec.height/2,0,w,spec.height,d,oak);
+        break;
       case 'sink':
         cabinet(.84,white,3);
         add(0,.87,-.03,w,.057,d-.06,granite);

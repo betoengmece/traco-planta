@@ -1,8 +1,8 @@
-import { kitchenOptionPlan, kitchenOptions } from './kitchen-options.mjs';
+import { kitchenOptionPlan, kitchenOptions } from './kitchen-options.mjs?v=20261126-moveis';
 import { siteExterior } from './site-exterior.mjs';
-import { furnitureFootprint, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261122-banheiros';
-import { interiorLayout } from './interior-layout.mjs?v=20261126-opcoes';
-import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
+import { furnitureContains, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261126-moveis';
+import { interiorLayout } from './interior-layout.mjs?v=20261126-moveis';
+import { livingRoomFurniture } from './living-room.mjs?v=20261126-moveis';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
@@ -10,7 +10,7 @@ import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lower
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { projectCode, startSync } from './sync.mjs?v=20261124-original';
-import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs?v=20261124-original';
+import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs?v=20261126-moveis';
 import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
@@ -70,6 +70,7 @@ let hover = null;
 let preview = null;
 let dragging = null;
 let furnitureDrag=null;
+let placingFurniture=false;
 let wallDrag = null;
 let wallGroupDrag = null;
 let openingDrag = null;
@@ -115,6 +116,7 @@ function displayStage(id,proposal=null) {
     proposal=null;
   }
   optionId=proposal;
+  placingFurniture=false;
   const index=remodel.stages.findIndex(stage=>stage.id===id);
   stageId=index<0 ? null : id;
   project=optionPlan ?? structuredClone(plans[index+1]);
@@ -153,7 +155,8 @@ function renderTimeline() {
     button.onclick=()=>{
       if ((!optionId && stageId===stage.id) || !discardDraft()) return;
       displayStage(stage.id);
-      list.querySelector('[aria-current="step"]')?.focus();
+      $('stage-menu').open=false;
+      $('stage-menu-label').focus();
     };
     list.append(button);
   }
@@ -171,9 +174,11 @@ function renderTimeline() {
   details.hidden=!optionId;
   details.textContent=optionId ? kitchenOptions.find(option=>option.id===optionId).detail : '';
   $('edit-stage').hidden=Boolean(editing || optionId);
+  $('customize-proposal').hidden=!optionId || Boolean(editing);
   $('edit-stage').textContent=stageId===null ? 'Editar Original' : 'Editar etapa';
   $('edit-stage').disabled=$('add-stage').disabled=savingStage;
   $('add-stage').hidden=Boolean(editing || optionId);
+  $('stage-menu-label').textContent=optionId ? 'Etapas' : stageId===null ? 'Original' : list.querySelector('[aria-current]')?.textContent ?? 'Nova etapa';
   $('stage-draft').hidden=!editing;
   const editingOriginal=editing?.id===null;
   $('original-edit-warning').hidden=!editingOriginal;
@@ -578,15 +583,34 @@ function furniturePreview(item) {
   return furnitureDrag?.item.id===item.id && furnitureDrag.next ? {...item,...furnitureDrag.next} : item;
 }
 
-function furnitureAt(position) {
+function allFurniture() {
   const {items}=interiorLayout(project);
   const living=livingRoomFurniture(project);
-  if (living) items.push(living.sofa,living.tv);
-  return items.reverse().find(item=>{
-    const {halfX,halfY}=furnitureFootprint(item);
-    const margin=Math.max(.025,4/camera.scale);
-    return Math.abs(item.x-position.x)<=halfX+margin && Math.abs(item.y-position.y)<=halfY+margin;
+  if (living) items.push(...[living.sofa,living.tv].filter(Boolean));
+  return items;
+}
+
+function furnitureAt(position) {
+  return allFurniture().reverse().find(item=>furnitureContains(item,position,Math.max(.025,4/camera.scale)));
+}
+
+function setFurniture(item,changes) {
+  commit(()=>{
+    project.furniturePositions={...project.furniturePositions,
+      [item.id]:{...project.furniturePositions?.[item.id],...changes}};
   });
+}
+
+function placeFurniture(position) {
+  const item={id:'movel:'+crypto.randomUUID(),kind:'block',width:.60,depth:.60,height:.60,rotation:0,...position};
+  if (!furnitureTarget(project,item,position)) {
+    setHint('Escolha um espaço onde o móvel de 60 cm caiba sem cruzar uma parede.');
+    return;
+  }
+  placingFurniture=false;
+  setSelection({id:item.id,type:'furniture',name:furnitureNames.block});
+  const {id,...values}=item;
+  setFurniture({id},values);
 }
 
 function paintRoomItems(rooms,items) {
@@ -594,17 +618,31 @@ function paintRoomItems(rooms,items) {
   for (const entry of items) {
     const item=furniturePreview(entry);
     const p=screen(item);
-    const w=item.width*camera.scale, d=item.depth*camera.scale;
+    const w=item.width*camera.scale, d=item.kind==='tv' ? Math.max(4,item.depth*camera.scale) : item.depth*camera.scale;
     context.save();
     context.translate(p.x,p.y);
-    context.rotate(item.rotation*Math.PI/2);
-    context.fillStyle=item.kind==='bed' ? '#c99aa7' : item.kind==='table' ? '#8b7c6b' : '#f4ecdf';
+    context.rotate(-item.rotation*Math.PI/2);
+    const colors={bed:'#c99aa7',table:'#8b7c6b',block:'#c7a77e',sofa:'#a6ad92',tv:'#293437'};
+    context.fillStyle=colors[item.kind]??'#f4ecdf';
     const active=selected?.id===item.id;
     context.strokeStyle=active ? '#147d67' : '#766c5f';
     context.lineWidth=active ? 2 : 1;
-    if (item.blocks || item.kind==='chair') context.fillRect(-w/2,-d/2,w,d);
-    if (!item.blocks && item.kind!=='chair') context.setLineDash([3,2]);
+    const solid=item.blocks || ['chair','sofa','tv'].includes(item.kind);
+    if (solid) context.fillRect(-w/2,-d/2,w,d);
+    else context.setLineDash([3,2]);
     context.strokeRect(-w/2,-d/2,w,d);
+    if (item.kind==='block' || (active && d>10)) {
+      context.setLineDash([]);
+      context.beginPath();
+      context.moveTo(-w*.23,d*.30);
+      context.lineTo(w*.23,d*.30);
+      context.stroke();
+    }
+    if (item.kind==='sofa' && w>12) {
+      context.fillStyle='#bfc5af';
+      context.fillRect(-w*.40,-d*.42,w*.37,d*.69);
+      context.fillRect(w*.03,-d*.42,w*.37,d*.69);
+    }
     context.restore();
   }
   context.fillStyle='#564c40';
@@ -625,29 +663,7 @@ function paintRoomItems(rooms,items) {
 function paintLivingRoom(drawing) {
   const furniture=livingRoomFurniture(drawing);
   if (!furniture) return;
-  const sofa=furniturePreview(furniture.sofa), tv=furniturePreview(furniture.tv);
-  const a=screen({x:sofa.x-sofa.width/2,y:sofa.y-sofa.depth/2});
-  const b=screen({x:sofa.x+sofa.width/2,y:sofa.y+sofa.depth/2});
-  const tvLeft=screen({x:tv.x-tv.width/2,y:tv.y});
-  const tvRight=screen({x:tv.x+tv.width/2,y:tv.y});
-  context.save();
-  context.fillStyle='#a6ad92';
-  context.strokeStyle=selected?.id===sofa.id ? '#147d67' : '#586450';
-  context.lineWidth=selected?.id===sofa.id ? 2 : 1;
-  context.lineWidth=1;
-  context.beginPath();
-  context.roundRect(a.x,a.y,b.x-a.x,b.y-a.y,3);
-  context.fill();
-  context.stroke();
-  context.fillStyle='#bfc5af';
-  const seat=(b.x-a.x)*.37;
-  context.fillRect(a.x+seat*.24,a.y+3,seat,(b.y-a.y)*.69);
-  context.fillRect(b.x-seat*1.24,a.y+3,seat,(b.y-a.y)*.69);
-  const active=selected?.id===tv.id;
-  context.fillStyle=active ? '#147d67' : '#293437';
-  const height=active ? 6 : 4;
-  context.fillRect(tvLeft.x,tvLeft.y-height/2,tvRight.x-tvLeft.x,height);
-  context.restore();
+  paintRoomItems([],[furniture.sofa,furniture.tv].filter(Boolean));
 }
 
 function exteriorRect(left,top,right,bottom,color) {
@@ -910,6 +926,7 @@ plan.addEventListener('pointerdown', event => {
     if ($('properties').querySelector('[aria-invalid="true"]')) return;
   }
   const pos = world(p);
+  if (placingFurniture) { placeFurniture(pos); return; }
   if (tool==='select') {
     selectOnPlan(event,p,pos);
     return;
@@ -1030,7 +1047,7 @@ plan.addEventListener('pointermove', event => {
     if (tool==='measure') measureHover=measurementTarget(pos,event.shiftKey);
     if (tool==='select') {
       const hit=multiSelect ? hitWall(pos) : furnitureAt(pos) || hitTest(pos);
-      plan.style.cursor=hit || endpointAt(pos) ? 'grab' : 'default';
+      plan.style.cursor=placingFurniture ? 'crosshair' : hit || endpointAt(pos) ? 'grab' : 'default';
     }
     hover = tool === 'wall' ? snap(pos,event.shiftKey) : null;
     preview = ['door','window'].includes(tool) ? openingAt(pos,tool) : null;
@@ -1046,7 +1063,7 @@ function endDrag(event) {
   dragging=wallDrag=openingDrag=wallGroupDrag=furnitureDrag=null;
   cursor();
   if (event.type==='pointerup' && furniture?.next && distance(furniture.item,furniture.next)>.000001) {
-    commit(() => { project.furniturePositions={...project.furniturePositions,[furniture.item.id]:furniture.next}; });
+    setFurniture(furniture.item,furniture.next);
   } else if (event.type==='pointerup' && change) {
     commit(() => { project.walls=change.walls; project.openings=change.openings; },{structure:true});
   } else if (event.type==='pointerup' && group && multiSelect && !group.moved) {
@@ -1063,10 +1080,11 @@ plan.addEventListener('pointerleave',() => { if (!dragging && !wallDrag && !open
 plan.addEventListener('wheel',event => { event.preventDefault(); zoomPlan(Math.exp(-event.deltaY*.001),coordinate(event)); },{passive:false});
 plan.addEventListener('contextmenu',event => event.preventDefault());
 
-function cursor() { plan.style.cursor = (!editing && tool!=='measure') || tool==='pan' ? 'grab' : tool==='select' ? 'default' : 'crosshair'; }
+function cursor() { plan.style.cursor = placingFurniture ? 'crosshair' : (!editing && tool!=='measure') || tool==='pan' ? 'grab' : tool==='select' ? 'default' : 'crosshair'; }
 function setHint(text) { $('hint').textContent=text; }
 function setTool(next) {
   if (view!=='plan' || (!editing && !['select','pan','measure'].includes(next))) return;
+  if (next!=='select') placingFurniture=false;
   if (next!==tool) {
     start=null;
     resetMeasure();
@@ -1179,8 +1197,17 @@ function renderItems() {
       const children=document.createElement('div');
       children.className='item-children';
       entries.forEach((entry,index) => {
-        const row=itemRow(shortNames[type]+' '+(index+1),type==='wall' ? metres(length(entry)) : sizeLabel(entry),
-          event => selectItem(entry,type,event));
+        const row=key==='furniture'
+          ? itemRow(furnitureNames[entry.kind],metres(entry.width)+' × '+metres(entry.depth),()=>{
+            if (view!=='plan') setView('plan');
+            camera.x=entry.x;
+            camera.y=entry.y;
+            setSelection({id:entry.id,type:'furniture',name:furnitureNames[entry.kind]});
+            if (matchMedia('(max-width: 600px)').matches) setItems(false);
+            setTool('select');
+          })
+          : itemRow(shortNames[type]+' '+(index+1),type==='wall' ? metres(length(entry)) : sizeLabel(entry),
+            event=>selectItem(entry,type,event));
         row.dataset.itemKey=entry.id;
         if (selected?.id===entry.id || selectedWalls.has(entry.id)) row.setAttribute('aria-current','true');
         children.append(row);
@@ -1193,6 +1220,8 @@ function renderItems() {
     for (const type of project.windowTypes) {
       group(type.id,type.name,'window',project.openings.filter(opening => opening.typeId===type.id));
     }
+    const furniture=allFurniture();
+    group('furniture','Móveis','cube',furniture);
     if (!list.childElementCount) {
       const note=document.createElement('p');
       note.className='item-note';
@@ -1275,6 +1304,38 @@ function inspector() {
       '<p class="type-note">Arraste o corpo de uma das paredes para mover o conjunto.</p>';
     renderMultiSelect(panel);
     return;
+  }
+  if (selected?.type==='furniture' && view==='plan') {
+    const item=allFurniture().find(entry=>entry.id===selected.id);
+    if (item) {
+      $('inspector').hidden=false;
+      $('inspector-title').textContent='Editar móvel';
+      const dimensions=item.kind==='block' ? numberField('width','Largura',item.width,.10,8)+
+        numberField('depth','Profundidade',item.depth,.10,8)+numberField('height','Altura',item.height,.10,4) : '';
+      const angle=Math.round(item.rotation*90);
+      const rotation='<label>Ângulo<div class="measure"><input type="number" data-field="angle" value="'+angle+'" step="1" min="-360" max="360"><span>°</span></div></label>';
+      renderProperties(panel,'cube',furnitureNames[item.kind],dimensions+rotation,'Arraste o móvel para mudar a posição.',element=>{
+        const value=element.valueAsNumber;
+        if (!Number.isFinite(value) || !element.checkValidity()) {
+          showPropertyError(element,'Informe um valor dentro dos limites do campo.');
+          return;
+        }
+        changeFurniture(item,element.dataset.field==='angle' ? {rotation:((value%360+360)%360)/90} : {[element.dataset.field]:value},element);
+      },true);
+      const turns=document.createElement('div');
+      turns.className='furniture-turns';
+      for (const [label,step] of [['↶ 90°',1],['↷ 90°',-1]]) {
+        const button=document.createElement('button');
+        button.type='button';
+        button.className='plain';
+        button.textContent=label;
+        button.setAttribute('aria-label',step>0 ? 'Girar 90 graus à esquerda' : 'Girar 90 graus à direita');
+        button.onclick=()=>changeFurniture(item,{rotation:(item.rotation+step+4)%4});
+        turns.append(button);
+      }
+      panel.querySelector('.fields').after(turns);
+      return;
+    }
   }
   const item=selected?.type==='wall'
     ? project.walls.find(wall => wall.id===selected.id)
@@ -1492,8 +1553,23 @@ function applyField(item, element) {
   commit(() => Object.assign(item,update));
 }
 
+function changeFurniture(item,changes,element=null) {
+  const next={...item,...changes};
+  if (!furnitureTarget(project,next,next)) {
+    showPropertyError(element,'O móvel cruzaria uma parede. Afaste-o da parede antes de girar ou mudar o tamanho.');
+    return;
+  }
+  setFurniture(item,{x:item.x,y:item.y,...changes});
+}
+
 function remove() {
-  if (!selected || selected.type==='furniture' || selectedWalls.size>1 || view!=='plan') return;
+  if (!editing || !selected || selectedWalls.size>1 || view!=='plan') return;
+  if (selected.type==='furniture') {
+    const {id}=selected;
+    resetSelection();
+    setFurniture({id},{hidden:true});
+    return;
+  }
   const {id,type} = selected;
   setSelection(null);
   commit(() => {
@@ -1526,6 +1602,9 @@ function refresh() {
   if (isPlan && !editing && tool==='select') {
     hint=optionId ? 'Estudo de layout · navegue ou alterne para 3D.' : stageId ? 'Arraste para navegar. Use Editar etapa para alterar o desenho.' : 'Planta original · arraste para navegar.';
   }
+  if (placingFurniture && isPlan) hint='Toque na planta para colocar o móvel de 60 × 60 × 60 cm.';
+  $('create-furniture').hidden=!editing || !isPlan;
+  $('create-furniture').setAttribute('aria-pressed',String(placingFurniture));
   setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
   $('model-button').setAttribute('aria-pressed',String(view==='model'));
@@ -1659,7 +1738,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261126-opcoes');
+    const { createModel }=await import('./model.mjs?v=20261126-moveis');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
@@ -1744,6 +1823,20 @@ for (const {id,title} of kitchenOptions) {
   button.onclick=()=>{ if (!savingStage && discardDraft()) displayStage(null,id); };
   $('kitchen-options').append(button);
 }
+$('create-furniture').onclick=()=>{
+  if (!editing) return;
+  placingFurniture=!placingFurniture;
+  resetSelection();
+  setTool('select');
+};
+$('customize-proposal').onclick=()=>{
+  if (!optionId || editing || savingStage) return;
+  if (remodel.stages.length && !window.confirm('A nova etapa vai partir desta proposta, incluindo o desenho que você vê agora. Continuar?')) return;
+  const proposal=project;
+  editStage(true);
+  project=proposal;
+  refresh();
+};
 $('edit-stage').onclick=()=>editStage(false);
 $('add-stage').onclick=()=>editStage(true);
 $('cancel-stage').onclick=()=>{ if (discardDraft()) displayStage(stageId); };
@@ -1859,7 +1952,7 @@ document.addEventListener('keydown',event => {
   if (key==='g') { $('magnetism').click(); return; }
   const shortcuts={v:'select',p:'wall',d:'door',j:'window',r:'measure',m:'pan'};
   if (shortcuts[key]) setTool(shortcuts[key]);
-  else if (key==='escape') { start=hover=preview=null; resetSelection(); resetMeasure(); cursor(); refresh(); }
+  else if (key==='escape') { placingFurniture=false; start=hover=preview=null; resetSelection(); resetMeasure(); cursor(); refresh(); }
   else if (['delete','backspace'].includes(key) && selected) { event.preventDefault(); remove(); }
 });
 

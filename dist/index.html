@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Desenhe paredes, portas e janelas e explore a planta em 3D.">
 <title>Traço Planta</title>
-<link rel="stylesheet" href="./style.css?v=20261126-opcoes">
+<link rel="stylesheet" href="./style.css?v=20261126-moveis">
 </head>
 <body>
 <header class="top">
@@ -21,9 +21,14 @@
   </div>
 </header>
 <nav class="timeline" id="timeline" aria-label="Etapas da reforma" hidden>
-  <div id="stage-links" class="stage-links"></div>
+  <details class="stage-menu" id="stage-menu">
+    <summary id="stage-menu-label">Original</summary>
+    <div id="stage-links" class="stage-links"></div>
+  </details>
   <div class="stage-actions">
     <button id="edit-stage" class="plain" type="button" hidden>Editar etapa</button>
+    <button id="customize-proposal" class="plain" type="button" hidden>Personalizar proposta</button>
+    <button id="create-furniture" class="plain" type="button" aria-pressed="false" hidden>+ Criar móvel</button>
     <button id="add-stage" class="plain" type="button">+ Nova etapa</button>
   </div>
   <div id="stage-draft" class="stage-draft" hidden>
@@ -140,6 +145,6 @@
   <div><button class="primary">Fechar</button></div>
 </form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
-<script type="module" src="./app.mjs?v=20261126-opcoes"></script>
+<script type="module" src="./app.mjs?v=20261126-moveis"></script>
 </body>
 </html>

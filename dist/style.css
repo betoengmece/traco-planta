@@ -223,3 +223,10 @@ main{height:auto;flex:1}
 .kitchen-options{flex:0 0 100%;padding-top:0}
 .kitchen-options [aria-pressed="true"]{background:#e1f3e8;border-color:#89b6a6;color:#174f42;font-weight:700}
 .kitchen-option-detail{flex:0 0 100%;margin:0;padding:2px 4px 3px;color:var(--muted);font-size:.82rem}
+
+.stage-menu{position:relative;flex:none;max-width:min(48vw,240px);z-index:12}
+.stage-menu summary{cursor:pointer;background:var(--white);border:1px solid var(--line);border-radius:7px;padding:6px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.85rem}
+.stage-menu .stage-links{position:absolute;top:calc(100% + 4px);left:0;width:min(70vw,240px);max-height:min(48vh,320px);overflow-y:auto;display:flex;flex-direction:column;background:var(--white);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px #172b2424;padding:5px}
+.stage-menu .stage-links button{width:100%;max-width:none;text-align:left}
+.furniture-turns{display:flex;gap:6px;margin-top:8px}
+#create-furniture[aria-pressed="true"]{background:#e1f3e8;color:#174f42}

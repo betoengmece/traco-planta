@@ -1,5 +1,5 @@
 import { clamp, interval, pointAt } from './geometry.mjs';
-import { positionedFurniture } from './furniture-position.mjs';
+import { positionedFurniture } from './furniture-position.mjs?v=20261126-moveis';
 
 const sofaWidth=1.80;
 const sofaDepth=.85;
@@ -35,7 +35,6 @@ export function livingRoomFurniture(project) {
   if (width<1.20) return null;
   const x=clamp(pointAt(windowWall,windowOpening.t).x,bounds.min+width/2,bounds.max-width/2);
   const sofa={id:'sala:sofa',kind:'sofa',x,y:frontWallY-.06-sofaDepth/2,width,depth:sofaDepth,rotation:0};
-  const tv={id:'sala:tv',kind:'tv',x,y:tvFace+.05,width:tvWidth,depth:.078,height:tvHeight,elevation:1.21,rotation:0,
-    slide:{axis:'x',min:left+tvWidth/2+.04,max:Math.min(windowWall.b.x,tvWall.b.x)-tvWidth/2-.05}};
+  const tv={id:'sala:tv',kind:'tv',x,y:tvFace+.05,width:tvWidth,depth:.078,height:tvHeight,elevation:1.21,rotation:0};
   return {sofa:positionedFurniture(project,sofa),tv:positionedFurniture(project,tv)};
 }

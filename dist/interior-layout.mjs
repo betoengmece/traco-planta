@@ -1,10 +1,11 @@
-import { positionedFurniture } from './furniture-position.mjs';
+import { customFurniture, positionedFurniture } from './furniture-position.mjs?v=20261126-moveis';
 
 // The photographed rooms are located by the adjoining walls and window in the survey.
 export function interiorLayout(project) {
   const walls=new Map(project.walls.map(wall=>[wall.id,wall]));
   const rooms=[];
   const items=[];
+  const identities=new Map();
   function horizontal(id) {
     const wall=walls.get(id);
     return wall && wall.a.y===wall.b.y ? wall : null;
@@ -24,16 +25,12 @@ export function interiorLayout(project) {
     const halfX=(crossed ? depth : width)/2;
     const halfY=(crossed ? width : depth)/2;
     if (x-halfX<room.left || x+halfX>room.right || y-halfY<room.top || y+halfY>room.bottom) return;
-    const slide=kind==='wallCabinet'
-      ? {axis:'y',min:room.top+halfY+.10,max:room.bottom-halfY-.10}
-      : kind==='shelves'
-        ? {axis:'x',min:room.left+halfX+.10,max:room.right-halfX-.10}
-        : null;
     const baseId=room.name+':'+kind;
-    const id=items.some(item=>item.id===baseId) ? baseId+':2' : baseId;
-    const useProposedPosition=(option && room.name==='Cozinha') || (swap && room.name==='Quarto');
-    const spec={id,kind,x,y,width,depth,rotation,blocks,slide};
-    items.push(useProposedPosition ? spec : positionedFurniture(project,spec));
+    const count=(identities.get(baseId)??0)+1;
+    identities.set(baseId,count);
+    const id=count===1 ? baseId : baseId+':'+count;
+    const furniture=positionedFurniture(project,{id,kind,x,y,width,depth,rotation,blocks});
+    if (furniture) items.push(furniture);
   }
 
   const kitchenWall=vertical('right-main');
@@ -161,5 +158,5 @@ export function interiorLayout(project) {
   if (livingLeft && livingTop && livingEnd) {
     room('Sala',livingLeft.a.x,livingEnd.b.x,livingTop.a.y,livingEnd.a.y,'neutral','slats',false);
   }
-  return {rooms,items};
+  return {rooms,items:[...items,...customFurniture(project)]};
 }

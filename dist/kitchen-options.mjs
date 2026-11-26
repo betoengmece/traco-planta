@@ -10,6 +10,8 @@ export function kitchenOptionPlan(original,id) {
   const option=kitchenOptions.find(option=>option.id===id);
   if (!option) return null;
   const plan={...structuredClone(original),kitchenOption:id};
+  plan.furniturePositions=Object.fromEntries(Object.entries(plan.furniturePositions??{}).filter(([key])=>
+    !key.startsWith('Cozinha:') && (id==='current' || !key.startsWith('Quarto:'))));
   if (id==='current') return plan;
 
   const left=plan.walls.find(wall=>wall.id==='middle-divider');

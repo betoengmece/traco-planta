@@ -6,9 +6,9 @@ import { surveyOutline } from './survey.mjs?v=20261122-janela-cozinha';
 
 import { canStand, eyeHeight, walkBarriers, walkSpawn, walkStep } from './walk.mjs';
 import { createGardenView } from './garden-view.mjs';
-import { livingRoomFurniture } from './living-room.mjs?v=20261122-moveis';
-import { interiorLayout } from './interior-layout.mjs?v=20261126-opcoes';
-import { makeInterior } from './interior-model.mjs?v=20261122-banheiros';
+import { livingRoomFurniture } from './living-room.mjs?v=20261126-moveis';
+import { interiorLayout } from './interior-layout.mjs?v=20261126-moveis';
+import { makeInterior } from './interior-model.mjs?v=20261126-moveis';
 import { siteExterior } from './site-exterior.mjs';
 import { makeExterior } from './exterior-model.mjs?v=20261122-ressalto';
 
@@ -211,20 +211,39 @@ export function createModel(host, onZoom) {
     const group=new THREE.Group();
     group.name='Sala com sofá e TV de 50 polegadas';
     assembly.add(group);
-    const {x,y,width,depth}=sofa;
-    solid(group,x,.23,y,width,.29,depth,upholstery);
-    solid(group,x,.61,y+depth/2-.09,width,.42,.18,upholstery);
-    for (const side of [-1,1]) {
-      solid(group,x+side*(width/2-.065),.49,y,.13,.29,depth-.04,upholstery);
-      solid(group,x+side*(width/2-.12),.055,y-.30,.065,.11,.06,feet);
-      solid(group,x+side*(width/2-.12),.055,y+.30,.065,.11,.06,feet);
-      const seatWidth=(width-.30)/2;
-      solid(group,x+side*seatWidth/2,.408,y-.077,seatWidth-.013,.13,.63,cushion);
-      solid(group,x+side*seatWidth/2,.655,y+.251,seatWidth-.016,.38,.12,cushion);
+    if (sofa) {
+      const piece=new THREE.Group();
+      piece.position.set(sofa.x,0,sofa.y);
+      piece.rotation.y=sofa.rotation*Math.PI/2;
+      group.add(piece);
+      const {width,depth}=sofa;
+      const x=0,y=0;
+      solid(piece,x,.23,y,width,.29,depth,upholstery);
+      solid(piece,x,.61,y+depth/2-.09,width,.42,.18,upholstery);
+      for (const side of [-1,1]) {
+        solid(piece,x+side*(width/2-.065),.49,y,.13,.29,depth-.04,upholstery);
+        solid(piece,x+side*(width/2-.12),.055,y-.30,.065,.11,.06,feet);
+        solid(piece,x+side*(width/2-.12),.055,y+.30,.065,.11,.06,feet);
+        const seatWidth=(width-.30)/2;
+        solid(piece,x+side*seatWidth/2,.408,y-.077,seatWidth-.013,.13,.63,cushion);
+        solid(piece,x+side*seatWidth/2,.655,y+.251,seatWidth-.016,.38,.12,cushion);
+      }
+      addFurnitureBarrier(sofa);
     }
-    solid(group,tv.x,tv.elevation,tv.y,tv.width+.036,tv.height+.043,.049,tvFrame);
-    solid(group,tv.x,tv.elevation,tv.y+.026,tv.width,tv.height,.007,screen);
-    barriers.push({x:sofa.x,y:sofa.y,ux:1,uy:0,half:sofa.depth/2,start:-sofa.width/2,end:sofa.width/2});
+    if (tv) {
+      const piece=new THREE.Group();
+      piece.position.set(tv.x,tv.elevation,tv.y);
+      piece.rotation.y=tv.rotation*Math.PI/2;
+      group.add(piece);
+      solid(piece,0,0,0,tv.width+.036,tv.height+.043,.049,tvFrame);
+      solid(piece,0,0,.026,tv.width,tv.height,.007,screen);
+    }
+  }
+
+  function addFurnitureBarrier(item) {
+    const ux=Math.cos(item.rotation*Math.PI/2);
+    const uy=-Math.sin(item.rotation*Math.PI/2);
+    barriers.push({x:item.x,y:item.y,ux,uy,half:item.depth/2,start:-item.width/2,end:item.width/2});
   }
 
   function addBathroomTiles(project,room,tiles) {
@@ -287,11 +306,7 @@ export function createModel(host, onZoom) {
     }
     for (const item of items) {
       assembly.add(interior.furnishing(item,solid));
-      if (item.blocks) {
-        const ux=Math.cos(item.rotation*Math.PI/2);
-        const uy=-Math.sin(item.rotation*Math.PI/2);
-        barriers.push({x:item.x,y:item.y,ux,uy,half:item.depth/2,start:-item.width/2,end:item.width/2});
-      }
+      if (item.blocks) addFurnitureBarrier(item);
     }
     ceiling.visible=walking;
   }
