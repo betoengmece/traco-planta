@@ -42,14 +42,28 @@ export function positionedFurniture(project,item) {
 
 export function customFurniture(project) {
   return Object.entries(project.furniturePositions??{})
-    .filter(([,item])=>item.kind==='block' && !item.hidden)
-    .map(([id,item])=>({...item,id,blocks:true}));
+    .filter(([id,item])=>id.startsWith('movel:') && Object.hasOwn(furnitureNames,item.kind) && !item.hidden)
+    .map(([id,item])=>({...item,id,blocks:item.blocks??true}));
 }
 
 export const furnitureNames={
-  block:'Móvel simples',sofa:'Sofá',tv:'TV',sink:'Pia',stove:'Fogão',fridge:'Geladeira',
+  block:'Móvel simples',singleBed:'Cama de solteiro',crib:'Berço',smallCabinet:'Armarinho',shoeRack:'Sapateira',sofa:'Sofá',tv:'TV',sink:'Pia',stove:'Fogão',fridge:'Geladeira',
   table:'Mesa',chair:'Cadeira',wallCabinet:'Armário aéreo',cabinet:'Armário',
   bed:'Cama',nightstand:'Criado-mudo',dresser:'Cômoda',wardrobe:'Guarda-roupa',
   toilet:'Vaso sanitário',bathSink:'Lavatório',cistern:'Caixa de descarga',
   desk:'Escrivaninha',wardrobeWhite:'Armário branco',shelves:'Prateleiras',sewing:'Mesa de costura'
 };
+
+
+export const furnitureCatalog=[
+  ['block',.60,.60,.60],['wardrobe',1.60,.60,1.98],['cabinet',.80,.60,.90],
+  ['wallCabinet',.80,.35,.59],['table',1.20,.75,.75],['chair',.44,.48,.89],
+  ['stove',.60,.60,.90],['sink',.90,.60,.90],['fridge',.65,.65,1.74],
+  ['bed',1.38,1.88,.60],['singleBed',.88,1.88,.60],['crib',.76,1.42,.96],
+  ['smallCabinet',.55,.36,.75],['shoeRack',.75,.32,.88],['nightstand',.40,.38,.50]
+].map(([kind,width,depth,height])=>({kind,width,depth,height,rotation:0,blocks:kind!=='wallCabinet'}));
+
+export function furnitureCopy(item) {
+  const {kind,width,depth,height,elevation,rotation,blocks}=item;
+  return {kind,width,depth,height,elevation,rotation,blocks:blocks??!['tv','chair','wallCabinet'].includes(kind)};
+}

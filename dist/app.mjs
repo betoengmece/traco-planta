@@ -1,8 +1,8 @@
-import { kitchenOptionPlan, kitchenOptions } from './kitchen-options.mjs?v=20261126-moveis';
+import { kitchenOptionPlan, kitchenOptions } from './kitchen-options.mjs?v=20261126-catalogo';
 import { siteExterior } from './site-exterior.mjs';
-import { furnitureContains, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261126-moveis';
-import { interiorLayout } from './interior-layout.mjs?v=20261126-moveis';
-import { livingRoomFurniture } from './living-room.mjs?v=20261126-moveis';
+import { furnitureCatalog, furnitureContains, furnitureCopy, furnitureNames, furnitureTarget } from './furniture-position.mjs?v=20261126-catalogo';
+import { interiorLayout } from './interior-layout.mjs?v=20261126-catalogo';
+import { livingRoomFurniture } from './living-room.mjs?v=20261126-catalogo';
 import { bounds, changeWallThickness, clamp, distance, heading, interval, joinedWallCaps, length, placeOpening, pointAt, projectToWall, validateOpening, withWallThickness } from './geometry.mjs';
 import { icon, renderIcons } from './icons.mjs';
 import { defaultProject, houseOutline } from './template.mjs';
@@ -10,7 +10,7 @@ import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lower
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { projectCode, startSync } from './sync.mjs?v=20261124-original';
-import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs?v=20261126-moveis';
+import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs?v=20261126-catalogo';
 import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
@@ -602,13 +602,13 @@ function setFurniture(item,changes) {
 }
 
 function placeFurniture(position) {
-  const item={id:'movel:'+crypto.randomUUID(),kind:'block',width:.60,depth:.60,height:.60,rotation:0,...position};
+  const item={...placingFurniture,id:'movel:'+crypto.randomUUID(),...position};
   if (!furnitureTarget(project,item,position)) {
-    setHint('Escolha um espaço onde o móvel de 60 cm caiba sem cruzar uma parede.');
+    setHint('Escolha um ponto onde o móvel caiba sem cruzar uma parede.');
     return;
   }
   placingFurniture=false;
-  setSelection({id:item.id,type:'furniture',name:furnitureNames.block});
+  setSelection({id:item.id,type:'furniture',name:furnitureNames[item.kind]});
   const {id,...values}=item;
   setFurniture({id},values);
 }
@@ -622,7 +622,7 @@ function paintRoomItems(rooms,items) {
     context.save();
     context.translate(p.x,p.y);
     context.rotate(-item.rotation*Math.PI/2);
-    const colors={bed:'#c99aa7',table:'#8b7c6b',block:'#c7a77e',sofa:'#a6ad92',tv:'#293437'};
+    const colors={singleBed:'#c99aa7',crib:'#dcc5ab',bed:'#c99aa7',table:'#8b7c6b',block:'#c7a77e',sofa:'#a6ad92',tv:'#293437'};
     context.fillStyle=colors[item.kind]??'#f4ecdf';
     const active=selected?.id===item.id;
     context.strokeStyle=active ? '#147d67' : '#766c5f';
@@ -1310,8 +1310,10 @@ function inspector() {
     if (item) {
       $('inspector').hidden=false;
       $('inspector-title').textContent='Editar móvel';
-      const dimensions=item.kind==='block' ? numberField('width','Largura',item.width,.10,8)+
-        numberField('depth','Profundidade',item.depth,.10,8)+numberField('height','Altura',item.height,.10,4) : '';
+      const dimensions=item.id.startsWith('movel:') ? numberField('width','Largura',item.width,.10,8)+
+        numberField('depth','Profundidade',item.depth,.10,8)+
+        (['block','smallCabinet','shoeRack','tv'].includes(item.kind) && Number.isFinite(item.height)
+          ? numberField('height','Altura',item.height,.10,4) : '') : '';
       const angle=Math.round(item.rotation*90);
       const rotation='<label>Ângulo<div class="measure"><input type="number" data-field="angle" value="'+angle+'" step="1" min="-360" max="360"><span>°</span></div></label>';
       renderProperties(panel,'cube',furnitureNames[item.kind],dimensions+rotation,'Arraste o móvel para mudar a posição.',element=>{
@@ -1333,6 +1335,16 @@ function inspector() {
         button.onclick=()=>changeFurniture(item,{rotation:(item.rotation+step+4)%4});
         turns.append(button);
       }
+      const duplicate=document.createElement('button');
+      duplicate.type='button';
+      duplicate.className='plain';
+      duplicate.textContent='Duplicar';
+      duplicate.onclick=()=>{
+        placingFurniture=furnitureCopy(item);
+        resetSelection();
+        setTool('select');
+      };
+      turns.append(duplicate);
       panel.querySelector('.fields').after(turns);
       return;
     }
@@ -1602,9 +1614,9 @@ function refresh() {
   if (isPlan && !editing && tool==='select') {
     hint=optionId ? 'Estudo de layout · navegue ou alterne para 3D.' : stageId ? 'Arraste para navegar. Use Editar etapa para alterar o desenho.' : 'Planta original · arraste para navegar.';
   }
-  if (placingFurniture && isPlan) hint='Toque na planta para colocar o móvel de 60 × 60 × 60 cm.';
+  if (placingFurniture && isPlan) hint='Toque na planta para colocar '+furnitureNames[placingFurniture.kind].toLowerCase()+'.';
   $('create-furniture').hidden=!editing || !isPlan;
-  $('create-furniture').setAttribute('aria-pressed',String(placingFurniture));
+  $('create-furniture').setAttribute('aria-pressed',String(Boolean(placingFurniture)));
   setHint(isPlan ? hint : 'Arraste para girar e role para aproximar ou afastar.');
   $('plan-button').setAttribute('aria-pressed',String(isPlan));
   $('model-button').setAttribute('aria-pressed',String(view==='model'));
@@ -1738,7 +1750,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261126-moveis');
+    const { createModel }=await import('./model.mjs?v=20261126-catalogo');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
@@ -1823,9 +1835,18 @@ for (const {id,title} of kitchenOptions) {
   button.onclick=()=>{ if (!savingStage && discardDraft()) displayStage(null,id); };
   $('kitchen-options').append(button);
 }
+for (const item of furnitureCatalog) {
+  const label=furnitureNames[item.kind]+' · '+unit.format(item.width)+' × '+unit.format(item.depth)+' m';
+  $('furniture-catalog-kind').add(new Option(label,item.kind));
+}
 $('create-furniture').onclick=()=>{
   if (!editing) return;
-  placingFurniture=!placingFurniture;
+  $('furniture-catalog').returnValue='';
+  $('furniture-catalog').showModal();
+};
+$('furniture-catalog').onclose=()=>{
+  if ($('furniture-catalog').returnValue!=='place' || !editing) return;
+  placingFurniture=furnitureCatalog.find(item=>item.kind===$('furniture-catalog-kind').value);
   resetSelection();
   setTool('select');
 };
@@ -1929,7 +1950,7 @@ document.addEventListener('keyup',event => {
 });
 
 document.addEventListener('keydown',event => {
-  if (!remodel || event.target.matches('input,select,textarea') || $('review-dialog').open || $('survey-dialog').open) return;
+  if (!remodel || event.target.matches('input,select,textarea') || $('review-dialog').open || $('survey-dialog').open || $('furniture-catalog').open) return;
   const key=event.key.toLowerCase();
   if ((event.metaKey || event.ctrlKey) && ['z','y'].includes(key)) {
     event.preventDefault();

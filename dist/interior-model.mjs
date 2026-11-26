@@ -168,11 +168,33 @@ export function makeInterior() {
         add(0,.68,-front+.03,w,.43,.055,walnut);
         legs(.43,walnut);
         break;
+      case 'singleBed':
       case 'bed':
         add(0,.19,0,w,.34,d,walnut);
         add(0,.43,0,w,.18,d,linen);
         add(0,.535,.18,w+.024,.035,d-.35,duvet);
-        for(const side of [-1,1]) add(side*w*.24,.57,-d*.33,w*.40,.084,.35,linen);
+        for(const side of spec.kind==='singleBed' ? [0] : [-1,1]) add(side*w*.24,.57,-d*.33,w*(side ? .40 : .65),.084,.35,linen);
+        break;
+      case 'crib':
+        add(0,.25,0,w,.13,d,oak);
+        add(0,.345,0,w-.07,.115,d-.08,linen);
+        for (const side of [-1,1]) {
+          add(side*(w/2-.025),.93,0,.05,.06,d,oak);
+          add(0,.93,side*(d/2-.03),w,.06,.06,oak);
+          for (let i=0;i<12;i++) add(side*(w/2-.025),.59,(i/11-.5)*(d-.06),.026,.64,.028,oak);
+          for (let i=0;i<6;i++) add((i/5-.5)*(w-.04),.59,side*(d/2-.03),.024,.64,.028,oak);
+        }
+        break;
+      case 'smallCabinet':
+      case 'shoeRack':
+        cabinet(spec.height??.80,oak,2);
+        break;
+      case 'sofa':
+        add(0,.23,0,w,.30,d,duvet);
+        add(0,.60,d*.38,w,.44,d*.24,duvet);
+        break;
+      case 'tv':
+        add(0,spec.elevation??1.20,0,w,spec.height??.62,d,dark);
         break;
       case 'nightstand':
       case 'dresser': {

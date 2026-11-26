@@ -1,5 +1,5 @@
 import { clamp, interval, pointAt } from './geometry.mjs';
-import { positionedFurniture } from './furniture-position.mjs?v=20261126-moveis';
+import { positionedFurniture } from './furniture-position.mjs?v=20261126-catalogo';
 
 const sofaWidth=1.80;
 const sofaDepth=.85;

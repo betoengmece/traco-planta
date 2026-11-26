@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Desenhe paredes, portas e janelas e explore a planta em 3D.">
 <title>Traço Planta</title>
-<link rel="stylesheet" href="./style.css?v=20261126-moveis">
+<link rel="stylesheet" href="./style.css?v=20261126-catalogo">
 </head>
 <body>
 <header class="top">
@@ -118,6 +118,16 @@
     <footer class="workspace-foot"><strong id="mode"></strong><span id="hint" aria-live="polite"></span><span id="project-count"></span></footer>
   </section>
 </main>
+<dialog id="furniture-catalog" aria-labelledby="furniture-catalog-title">
+  <form method="dialog">
+    <h2 id="furniture-catalog-title">Criar móvel</h2>
+    <label>Modelo <select id="furniture-catalog-kind"></select></label>
+    <div>
+      <button class="plain" value="cancel">Cancelar</button>
+      <button class="primary" value="place">Colocar na planta</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="review-dialog" aria-labelledby="review-title">
   <form method="dialog">
     <h2 id="review-title">Revisar impacto</h2>
@@ -145,6 +155,6 @@
   <div><button class="primary">Fechar</button></div>
 </form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
-<script type="module" src="./app.mjs?v=20261126-moveis"></script>
+<script type="module" src="./app.mjs?v=20261126-catalogo"></script>
 </body>
 </html>

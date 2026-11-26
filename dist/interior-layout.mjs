@@ -1,4 +1,4 @@
-import { customFurniture, positionedFurniture } from './furniture-position.mjs?v=20261126-moveis';
+import { customFurniture, positionedFurniture } from './furniture-position.mjs?v=20261126-catalogo';
 
 // The photographed rooms are located by the adjoining walls and window in the survey.
 export function interiorLayout(project) {
