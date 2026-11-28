@@ -779,6 +779,27 @@ function paintSurveyDimensions(visibleProject) {
   context.restore();
 }
 
+function paintCorridorDimension(project,rooms) {
+  if (project.kitchenOption!=='integrada') return;
+  const room=rooms.find(item=>item.name==='Corredor' && item.label);
+  if (!room) return;
+  const y=room.top+(room.bottom-room.top)*.67;
+  const spans=wall=>Math.abs(wall.a.x-wall.b.x)<.001 &&
+    y>Math.min(wall.a.y,wall.b.y) && y<Math.max(wall.a.y,wall.b.y);
+  const left=project.walls.find(wall=>spans(wall) && Math.abs(wall.a.x-room.left)<.001);
+  const right=project.walls.find(wall=>spans(wall) && Math.abs(wall.a.x-room.right)<.001);
+  if (!left || !right) return;
+  const a={x:left.a.x+left.thickness/2,y};
+  const b={x:right.a.x-right.thickness/2,y};
+  if (b.x<=a.x) return;
+  context.save();
+  context.textAlign='center';
+  context.textBaseline='middle';
+  context.font='700 12px DM Sans, sans-serif';
+  paintDimensions([{a,b,cm:(b.x-a.x)*100}]);
+  context.restore();
+}
+
 function paintDimensions(dimensions) {
   for (const {a,b,cm,display,reference,approximate,suffix=''} of dimensions) {
     const first=screen(a);
@@ -842,7 +863,10 @@ function draw() {
     wallMeasure({a:{x:box.x,y:box.y},b:{x:box.x+box.width,y:box.y}},24);
     wallMeasure({a:{x:box.x,y:box.y+box.depth},b:{x:box.x,y:box.y}},23);
   }
-  if (drawing===project && tool==='select') paintSurveyDimensions(project);
+  if (drawing===project && tool==='select') {
+    paintSurveyDimensions(project);
+    paintCorridorDimension(project,interiors.rooms);
+  }
   paintExteriorDimensions(exterior);
   if (tool === 'wall' && hover) {
     if (start && distance(start, hover) > .02) {
