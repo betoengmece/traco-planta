@@ -136,9 +136,21 @@ export function reviewStage(document,id,title,draft) {
   const editingOriginal=id===null;
   const at=editingOriginal ? -1 : index<0 ? document.stages.length : index;
   const stages=editingOriginal ? [] : document.stages.slice(0,at);
-  let previous=layout(draft);
+  const previous=layout(draft);
   const original=editingOriginal ? previous : document.original;
   if (!editingOriginal) stages.push({id,title,ops:planChanges(oldPlans[at],draft)});
+  return rebaseFollowingStages(document,oldPlans,at,stages,previous,original);
+}
+
+export function reviewStageRemoval(document,id) {
+  const index=document.stages.findIndex(stage=>stage.id===id);
+  if (index<0) return null;
+  const plans=stagePlans(document);
+  return rebaseFollowingStages(document,plans,index,document.stages.slice(0,index),
+    plans[index],document.original);
+}
+
+function rebaseFollowingStages(document,oldPlans,at,stages,previous,original) {
   const conflicts=[];
   const impacted=[];
   for (let i=at+1;i<document.stages.length;i++) {

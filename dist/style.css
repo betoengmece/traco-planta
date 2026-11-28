@@ -230,3 +230,8 @@ main{height:auto;flex:1}
 .stage-menu .stage-links button{width:100%;max-width:none;text-align:left}
 .furniture-turns{display:flex;gap:6px;margin-top:8px}
 #create-furniture[aria-pressed="true"]{background:#e1f3e8;color:#174f42}
+
+#delete-stage{color:#a63e31}
+@media(max-width:600px){
+  .timeline>.stage-actions{flex-wrap:wrap;gap:4px}
+}

@@ -10,7 +10,7 @@ import { kitchenWindowDimensions, livingRoomLabel, livingWindowDimensions, lower
 import { resizeWindowType, withWindowTypes } from './window-types.mjs';
 import { measurePoint, wallFaces } from './measure.mjs';
 import { projectCode, startSync } from './sync.mjs?v=20261124-original';
-import { renovation, reviewStage, sharedRenovation, stagePlans } from './renovation.mjs?v=20261126-catalogo';
+import { renovation, reviewStage, reviewStageRemoval, sharedRenovation, stagePlans } from './renovation.mjs?v=20261128-etapas';
 import { minimumWallLength, moveWallEndpoint, moveWallGroup, snapWallPoint, straightenedEnd, stretchPoint, wallDragDelta } from './wall-edit.mjs';
 
 const $ = id => document.getElementById(id);
@@ -79,7 +79,7 @@ let model = null;
 let viewChange = 0;
 let size = { width: 1, height: 1 };
 let camera = { x: 0, y: 0, scale: 56, base: 56 };
-let fitted = false;
+let autoFrame = true;
 const past = [];
 const future = [];
 renderIcons();
@@ -106,7 +106,7 @@ function applyRemote(data) {
   $('timeline').hidden=false;
   $('share').hidden=false;
   displayStage(stageId,optionId);
-  if (first) fitPlan();
+  if (first) resize();
 }
 
 function displayStage(id,proposal=null) {
@@ -176,7 +176,8 @@ function renderTimeline() {
   $('edit-stage').hidden=Boolean(editing || optionId);
   $('customize-proposal').hidden=!optionId || Boolean(editing);
   $('edit-stage').textContent=stageId===null ? 'Editar Original' : 'Editar etapa';
-  $('edit-stage').disabled=$('add-stage').disabled=savingStage;
+  $('delete-stage').hidden=Boolean(editing || optionId || stageId===null);
+  $('edit-stage').disabled=$('add-stage').disabled=$('delete-stage').disabled=savingStage;
   $('add-stage').hidden=Boolean(editing || optionId);
   $('stage-menu-label').textContent=optionId ? 'Etapas' : stageId===null ? 'Original' : list.querySelector('[aria-current]')?.textContent ?? 'Nova etapa';
   $('stage-draft').hidden=!editing;
@@ -241,15 +242,30 @@ function saveStage() {
     commitStage();
     return;
   }
+  const prefix=editingOriginal ? 'Você vai alterar a planta Original.' : '';
+  showStageReview(editingOriginal ? 'Salvar a planta Original?' : 'Revisar impacto',prefix,
+    editingOriginal ? 'Confirmar e salvar Original' : 'Propagar e salvar');
+}
+
+function requestStageRemoval() {
+  if (editing || optionId || savingStage || stageId===null) return;
+  const index=remodel.stages.findIndex(stage=>stage.id===stageId);
+  const result=reviewStageRemoval(remodel,stageId);
+  if (!result) return;
+  review={...result,remove:true,previousId:remodel.stages[index-1]?.id??null};
+  showStageReview('Excluir etapa?', 'A etapa “'+remodel.stages[index].title+
+    '” e as mudanças que ela introduziu serão removidas.', 'Confirmar exclusão');
+}
+
+function showStageReview(title,prefix,confirmLabel) {
   const {impacted,conflicts}=review;
-  $('review-title').textContent=editingOriginal ? 'Salvar a planta Original?' : 'Revisar impacto';
+  $('review-title').textContent=title;
+  $('cancel-review').textContent=review.remove ? 'Cancelar' : 'Voltar à edição';
   const impactMessage=impacted.length
     ? 'Etapas que serão atualizadas — '+impacted.map(stage=>
       (remodel.stages.indexOf(stage)+1)+' · '+stage.title).join(', ')+'.'
     : 'As plantas das etapas seguintes ficam iguais.';
-  $('review-summary').textContent=editingOriginal
-    ? 'Você vai alterar a planta Original.'+(remodel.stages.length ? ' '+impactMessage : '')
-    : impactMessage;
+  $('review-summary').textContent=[prefix,impacted.length || !review.remove ? impactMessage : ''].filter(Boolean).join(' ');
   const list=$('review-conflicts');
   list.replaceChildren(...[...new Set(conflicts.map(summarizeConflict))].map(message=>{
     const item=document.createElement('li');
@@ -257,29 +273,33 @@ function saveStage() {
     return item;
   }));
   list.hidden=!conflicts.length;
-  $('confirm-review').textContent=conflicts.length ? 'Descartar conflitos e propagar' :
-    editingOriginal ? 'Confirmar e salvar Original' : 'Propagar e salvar';
+  $('confirm-review').textContent=conflicts.length
+    ? review.remove ? 'Excluir e descartar conflitos' : 'Descartar conflitos e propagar'
+    : confirmLabel;
   $('review-dialog').returnValue='';
   $('review-dialog').showModal();
 }
 
 async function commitStage() {
-  if (!review || !editing || savingStage) return;
+  if (!review || (!editing && !review.remove) || savingStage) return;
   savingStage=true;
-  const id=editing.id;
+  const {remove,previousId,document}=review;
+  const id=remove ? previousId : editing.id;
   const draft=editing;
   editing=null;
   renderTimeline();
   refresh();
-  const result=await sync.save(sharedRenovation(review.document),{original:id===null});
+  const result=await sync.save(sharedRenovation(document),{original:!remove && id===null});
   savingStage=false;
   review=null;
   if (result==='saved') {
     displayStage(id);
-    toast(id===null ? 'Planta Original salva.' : 'Etapa salva.');
+    toast(remove ? 'Etapa excluída.' : id===null ? 'Planta Original salva.' : 'Etapa salva.');
   } else {
     editing=draft;
-    if (result==='conflict') toast('Outra pessoa salvou primeiro. O rascunho segue aberto. Cancele a edição para carregar a versão da nuvem.');
+    if (remove) toast(result==='conflict' ? 'O projeto mudou em outro aparelho. Aguarde a atualização e tente novamente.'
+      : 'Não foi possível excluir a etapa. Confira a conexão e tente novamente.');
+    else if (result==='conflict') toast('Outra pessoa salvou primeiro. O rascunho segue aberto. Cancele a edição para carregar a versão da nuvem.');
     else toast('O rascunho segue aberto. Confira a conexão e tente salvar novamente.');
     renderTimeline();
     refresh();
@@ -354,7 +374,7 @@ function fitPlan() {
   const bottom=box.y+box.depth;
   const scale = clamp(Math.min((size.width - 64) / (right-x), (size.height - 82) / (bottom-y)), 10, 135);
   camera = { x:(x+right)/2, y:(y+bottom)/2, scale, base:scale };
-  fitted = true;
+  autoFrame = true;
   draw();
 }
 
@@ -365,12 +385,13 @@ function resize() {
   plan.width = Math.round(size.width * dpr);
   plan.height = Math.round(size.height * dpr);
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (!fitted) fitPlan();
+  if (autoFrame && remodel) fitPlan();
   else draw();
   model?.resize();
 }
 
 function zoomPlan(factor, anchor = { x: size.width / 2, y: size.height / 2 }) {
+  autoFrame=false;
   const before = world(anchor);
   camera.scale = clamp(camera.scale * factor, 8, 380);
   const after = world(anchor);
@@ -1040,6 +1061,7 @@ plan.addEventListener('pointermove', event => {
       setHint(openingDrag.next ? 'Solte para encaixar a abertura.' : 'Arraste até um trecho livre de uma parede.');
     }
   } else if (dragging) {
+    if (distance(p,dragging.p)>1) autoFrame=false;
     camera.x = dragging.x + (dragging.p.x-p.x)/camera.scale;
     camera.y = dragging.y + (dragging.p.y-p.y)/camera.scale;
   } else {
@@ -1137,6 +1159,7 @@ function selectItem(item,type,event) {
   const toggle=type==='wall' && (event.shiftKey || multiSelect);
   if (!toggle) {
     const point=pointAt(wall,type==='wall' ? .5 : item.t);
+    autoFrame=false;
     camera.x=point.x;
     camera.y=point.y;
   }
@@ -1200,6 +1223,7 @@ function renderItems() {
         const row=key==='furniture'
           ? itemRow(furnitureNames[entry.kind],metres(entry.width)+' × '+metres(entry.depth),()=>{
             if (view!=='plan') setView('plan');
+            autoFrame=false;
             camera.x=entry.x;
             camera.y=entry.y;
             setSelection({id:entry.id,type:'furniture',name:furnitureNames[entry.kind]});
@@ -1859,6 +1883,7 @@ $('customize-proposal').onclick=()=>{
   refresh();
 };
 $('edit-stage').onclick=()=>editStage(false);
+$('delete-stage').onclick=requestStageRemoval;
 $('add-stage').onclick=()=>editStage(true);
 $('cancel-stage').onclick=()=>{ if (discardDraft()) displayStage(stageId); };
 $('save-stage').onclick=saveStage;
@@ -1996,7 +2021,7 @@ window.addEventListener('beforeunload',event=>{
 });
 sync=startSync({
   applyRemote,
-  isBusy:()=>Boolean(editing || savingStage || dragging || $('survey-dialog').open),
+  isBusy:()=>Boolean(editing || savingStage || dragging || $('survey-dialog').open || $('review-dialog').open),
   status:syncStatus,
   unavailable:message=>{ $('access-message').textContent=message; }
 });

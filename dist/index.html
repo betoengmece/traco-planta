@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Desenhe paredes, portas e janelas e explore a planta em 3D.">
 <title>Traço Planta</title>
-<link rel="stylesheet" href="./style.css?v=20261126-catalogo">
+<link rel="stylesheet" href="./style.css?v=20261128-etapas">
 </head>
 <body>
 <header class="top">
@@ -27,6 +27,7 @@
   </details>
   <div class="stage-actions">
     <button id="edit-stage" class="plain" type="button" hidden>Editar etapa</button>
+    <button id="delete-stage" class="plain" type="button" hidden>Excluir etapa</button>
     <button id="customize-proposal" class="plain" type="button" hidden>Personalizar proposta</button>
     <button id="create-furniture" class="plain" type="button" aria-pressed="false" hidden>+ Criar móvel</button>
     <button id="add-stage" class="plain" type="button">+ Nova etapa</button>
@@ -134,7 +135,7 @@
     <p id="review-summary"></p>
     <ul id="review-conflicts" hidden></ul>
     <div>
-      <button class="plain" value="back">Voltar à edição</button>
+      <button class="plain" id="cancel-review" value="back">Voltar à edição</button>
       <button class="primary" id="confirm-review" value="apply">Propagar e salvar</button>
     </div>
   </form>
@@ -155,6 +156,6 @@
   <div><button class="primary">Fechar</button></div>
 </form></dialog>
 <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
-<script type="module" src="./app.mjs?v=20261126-reforma3"></script>
+<script type="module" src="./app.mjs?v=20261128-etapas"></script>
 </body>
 </html>
