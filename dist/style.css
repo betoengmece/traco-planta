@@ -228,7 +228,7 @@ main{height:auto;flex:1}
 .stage-menu summary{cursor:pointer;background:var(--white);border:1px solid var(--line);border-radius:7px;padding:6px 9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:.85rem}
 .stage-menu .stage-links{position:absolute;top:calc(100% + 4px);left:0;width:min(70vw,240px);max-height:min(48vh,320px);overflow-y:auto;display:flex;flex-direction:column;background:var(--white);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 20px #172b2424;padding:5px}
 .stage-menu .stage-links button{width:100%;max-width:none;text-align:left}
-.furniture-turns{display:flex;gap:6px;margin-top:8px}
+.furniture-turns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 #create-furniture[aria-pressed="true"]{background:#e1f3e8;color:#174f42}
 
 #delete-stage{color:#a63e31}

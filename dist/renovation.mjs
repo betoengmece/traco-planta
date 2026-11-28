@@ -1,7 +1,7 @@
 import { validateOpening } from './geometry.mjs';
 
 const collections=['walls','openings','windowTypes'];
-const fields=['name','template','example','wallThickness','furniturePositions','kitchenOption',...collections];
+const fields=['name','template','example','wallThickness','furniturePositions','furnitureGroups','kitchenOption',...collections];
 const plain=value=>value!==null && typeof value==='object' && !Array.isArray(value);
 
 function layout(data) {
@@ -26,6 +26,7 @@ function records(plan) {
     result[kind]=Object.fromEntries((result[kind]??[]).map(item=>[item.id,item]));
   }
   result.furniturePositions??={};
+  result.furnitureGroups??={};
   return result;
 }
 

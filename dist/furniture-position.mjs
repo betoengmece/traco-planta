@@ -32,6 +32,21 @@ export function furnitureTarget(project,item,position) {
   return blocked ? null : {x,y};
 }
 
+export function furnitureGroupTargets(project,items,delta) {
+  const targets=new Map();
+  for (const item of items) {
+    const target=furnitureTarget(project,item,{x:item.x+delta.x,y:item.y+delta.y});
+    if (!target) return null;
+    targets.set(item.id,target);
+  }
+  return targets;
+}
+
+export function furnitureGroupId(project,itemId) {
+  const id=project.furniturePositions?.[itemId]?.groupId;
+  return id && Object.hasOwn(project.furnitureGroups??{},id) ? id : null;
+}
+
 export function positionedFurniture(project,item) {
   const saved=project.furniturePositions?.[item.id];
   if (saved?.hidden) return null;
