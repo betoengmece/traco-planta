@@ -4,7 +4,7 @@ import { bounds, clamp, heading, interval, joinedWallCaps, length } from './geom
 import { houseOutline } from './template.mjs';
 import { surveyOutline } from './survey.mjs?v=20261122-janela-cozinha';
 
-import { canStand, eyeHeight, walkBarriers, walkSpawn, walkStep } from './walk.mjs';
+import { canStand, eyeHeight, walkBarriers, walkCameraDistance, walkSpawn, walkStep } from './walk.mjs?v=20261128-caminhada';
 import { createGardenView } from './garden-view.mjs';
 import { livingRoomFurniture } from './living-room.mjs?v=20261126-catalogo';
 import { interiorLayout } from './interior-layout.mjs?v=20261126-reforma3';
@@ -13,6 +13,7 @@ import { siteExterior } from './site-exterior.mjs';
 import { makeExterior } from './exterior-model.mjs?v=20261122-ressalto';
 
 const observerDistance=2.10;
+const thirdPersonDistance=2.35;
 const bathTiles={
   bathPattern:{finish:'bathCream',height:1.15,walls:['strip-side','right-strip','strip-top','rear-entry']},
   bathClay:{finish:'bathBlue',height:1.10,walls:['annex-upper','annex-lower','right-annex','annex-top','annex-bottom']}
@@ -24,6 +25,7 @@ export function createModel(host, onZoom) {
   const camera = new THREE.OrthographicCamera(-8, 8, 5, -5, .05, 240);
   const eyeCamera=new THREE.PerspectiveCamera(56,1,.035,80);
   eyeCamera.rotation.order='YXZ';
+  const followCamera=new THREE.PerspectiveCamera(56,1,.035,80);
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -77,6 +79,9 @@ export function createModel(host, onZoom) {
   let lastZoom = camera.zoom;
   let kitchenStart=null;
   let walking=false;
+  let thirdPerson=false;
+  let followZoom=1;
+  let followDistance=null;
   let hasWalkPosition=false;
   let barriers=[];
   let forward=0;
@@ -98,6 +103,10 @@ export function createModel(host, onZoom) {
   function createObserver() {
     const figure=new THREE.Group();
     figure.visible=false;
+    figure.name='Pessoa de 1,80 m';
+    const body=new THREE.Group();
+    body.scale.setScalar(1.80/(1.62+.128));
+    figure.add(body);
     const jersey=new THREE.MeshStandardMaterial({color:'#087f70',roughness:.82});
     const trousers=new THREE.MeshStandardMaterial({color:'#223d48',roughness:.85});
     const skin=new THREE.MeshStandardMaterial({color:'#d89d74',roughness:.9});
@@ -108,7 +117,7 @@ export function createModel(host, onZoom) {
       mesh.position.set(x,y,z);
       mesh.scale.set(sx,sy,sz);
       mesh.rotation.z=tilt;
-      figure.add(mesh);
+      body.add(mesh);
     }
     part(sphere,jersey,0,1.23,0,.205,.33,.126);
     part(sphere,skin,0,1.62,0,.103,.128,.105);
@@ -120,6 +129,7 @@ export function createModel(host, onZoom) {
       part(sphere,trousers,side*.092,.068,.059,.081,.068,.163);
     }
     const marker=new THREE.ArrowHelper(new THREE.Vector3(0,0,1),new THREE.Vector3(0,.032,.32),.53,0x087f70,.19,.16);
+    marker.name='Direção da caminhada';
     figure.add(marker);
     return figure;
   }
@@ -137,9 +147,35 @@ export function createModel(host, onZoom) {
   }
 
   function updateObserver() {
-    observer.visible=hasWalkPosition && !walking;
+    observer.visible=hasWalkPosition && (!walking || thirdPerson);
+    observer.getObjectByName('Direção da caminhada').visible=!walking;
     observer.position.set(eyeCamera.position.x,0,eyeCamera.position.z);
     observer.rotation.y=eyeCamera.rotation.y+Math.PI;
+  }
+
+  function activeZoom() {
+    return !walking ? camera.zoom : thirdPerson ? followZoom : eyeCamera.zoom;
+  }
+
+  function setThirdPerson(enabled) {
+    thirdPerson=enabled;
+    followDistance=null;
+    updateObserver();
+    onZoom(activeZoom());
+  }
+
+  function updateFollowCamera(delta) {
+    const {x,z}=eyeCamera.position;
+    const yaw=eyeCamera.rotation.y;
+    const backX=Math.sin(yaw),backZ=Math.cos(yaw);
+    const distance=thirdPersonDistance/followZoom;
+    const available=walkCameraDistance({x,y:z},yaw,distance,barriers);
+    // Pull the camera in immediately at a wall, and ease it out when the space opens.
+    followDistance=followDistance===null ? available :
+      Math.min(available,followDistance+delta*4);
+    const tilt=clamp(eyeCamera.rotation.x,-.64,.48);
+    followCamera.position.set(x+backX*followDistance,2.13,z+backZ*followDistance);
+    followCamera.lookAt(x-backX*.49,1.14+Math.sin(tilt)*(followDistance+.55),z-backZ*.49);
   }
 
   function placeWalker(atKitchen) {
@@ -169,11 +205,12 @@ export function createModel(host, onZoom) {
       eyeCamera.updateProjectionMatrix();
     }
     walking=active;
+    followDistance=null;
     ceiling.visible=walking;
     controls.enabled=!active;
     forward=sideways=0;
     updateObserver();
-    onZoom(walking ? eyeCamera.zoom : camera.zoom);
+    onZoom(activeZoom());
   }
 
   function lookWalk(dx,dy) {
@@ -432,14 +469,17 @@ export function createModel(host, onZoom) {
     eyeCamera.aspect=aspect;
     eyeCamera.fov=THREE.MathUtils.radToDeg(2*Math.atan(Math.tan(THREE.MathUtils.degToRad(28))*Math.max(1,.72/aspect)));
     eyeCamera.updateProjectionMatrix();
+    followCamera.aspect=aspect;
+    followCamera.fov=eyeCamera.fov;
+    followCamera.updateProjectionMatrix();
     renderer.setSize(width,height);
   }
 
   function fit() {
     if (walking) {
-      eyeCamera.zoom=1;
+      eyeCamera.zoom=followZoom=1;
       eyeCamera.updateProjectionMatrix();
-      onZoom(eyeCamera.zoom);
+      onZoom(activeZoom());
       return;
     }
     if (!box) return;
@@ -460,24 +500,35 @@ export function createModel(host, onZoom) {
     frame=requestAnimationFrame(tick);
     const delta=previousFrame===null ? 0 : clamp((time-previousFrame)/1000,0,.05);
     previousFrame=time;
-    if (walking) moveWalker(delta);
-    else controls.update();
-    const activeCamera=walking ? eyeCamera : camera;
-    if (lastZoom!==activeCamera.zoom) {
-      lastZoom=activeCamera.zoom;
+    if (walking) {
+      moveWalker(delta);
+      if (thirdPerson) {
+        updateObserver();
+        updateFollowCamera(delta);
+      }
+    } else controls.update();
+    const activeCamera=walking ? thirdPerson ? followCamera : eyeCamera : camera;
+    const zoom=activeZoom();
+    if (lastZoom!==zoom) {
+      lastZoom=zoom;
       onZoom(lastZoom);
     }
     renderer.render(scene,activeCamera);
   }
 
   return {
-    setProject, fit, resize, setWalking, lookWalk, setKitchenPhoto: garden.setPhoto,
+    setProject, fit, resize, setWalking, setThirdPerson, lookWalk, setKitchenPhoto: garden.setPhoto,
     setWalkInput(nextForward,nextSideways) { forward=nextForward; sideways=nextSideways; },
     get hasExterior() { return Boolean(exterior); },
     get hasKitchenView() { return Boolean(kitchenStart); },
     get walking() { return walking; },
-    get zoom() { return walking ? eyeCamera.zoom : camera.zoom; },
+    get thirdPerson() { return thirdPerson; },
+    get zoom() { return activeZoom(); },
     changeZoom(factor) {
+      if (walking && thirdPerson) {
+        followZoom=clamp(followZoom*factor,.67,1.65);
+        return;
+      }
       const activeCamera=walking ? eyeCamera : camera;
       activeCamera.zoom=clamp(activeCamera.zoom*factor,walking ? .8 : controls.minZoom,walking ? 2.5 : controls.maxZoom);
       activeCamera.updateProjectionMatrix();

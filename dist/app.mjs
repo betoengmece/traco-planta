@@ -1683,12 +1683,16 @@ function updateModelControls() {
   $('pick-kitchen-photo').hidden=!kitchen;
   if (!kitchen) $('kitchen-photo-status').hidden=true;
   $('walk-directions').hidden=!walking;
+  const thirdPerson=walking && model.thirdPerson;
+  const cameraButton=$('third-person-view');
+  cameraButton.hidden=!walking;
+  cameraButton.setAttribute('aria-pressed',String(thirdPerson));
   $('model').toggleAttribute('data-walking',walking);
   const walkButton=$('walk-view');
   walkButton.setAttribute('aria-pressed',String(walking));
   walkButton.textContent=walking ? 'Voltar ao 3D' : 'Andar pela casa';
   if (walking) {
-    $('mode').textContent='Caminhada';
+    $('mode').textContent=thirdPerson ? 'Terceira pessoa' : 'Primeira pessoa';
     setHint('Segure uma seta para andar. Arraste a vista para olhar.');
   } else if (visible) {
     $('mode').textContent='Navegação 3D';
@@ -1774,7 +1778,7 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261126-reforma3');
+    const { createModel }=await import('./model.mjs?v=20261128-caminhada');
     if (turn!==viewChange) return;
     host.replaceChildren();
     model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
@@ -1798,6 +1802,11 @@ function zoom(factor) {
 $('plan-button').onclick=() => setView('plan');
 $('model-button').onclick=() => setView('model');
 $('walk-view').onclick=() => changeWalkMode(!model?.walking);
+$('third-person-view').onclick=() => {
+  if (!model?.walking) return;
+  model.setThirdPerson(!model.thirdPerson);
+  updateModelControls();
+};
 $('kitchen-view').onclick=() => changeWalkMode(true,true);
 $('garage-view').onclick=() => changeWalkMode(true,'garage');
 $('pick-kitchen-photo').onclick=() => $('kitchen-photo').click();

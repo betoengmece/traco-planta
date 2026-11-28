@@ -40,13 +40,26 @@ export function walkBarriers(project) {
   });
 }
 
-export function canStand(x,y,barriers) {
+export function canStand(x,y,barriers,radius=bodyRadius) {
   return !barriers.some(wall => {
     const dx=x-wall.x, dy=y-wall.y;
     const along=dx*wall.ux+dy*wall.uy;
     const across=-dx*wall.uy+dy*wall.ux;
-    return Math.hypot(along-clamp(along,wall.start,wall.end),across-clamp(across,-wall.half,wall.half))<bodyRadius;
+    return Math.hypot(along-clamp(along,wall.start,wall.end),across-clamp(across,-wall.half,wall.half))<radius;
   });
+}
+
+export function walkCameraDistance(position,yaw,distance,barriers) {
+  const samples=Math.ceil(distance/.045);
+  const dx=Math.sin(yaw);
+  const dy=Math.cos(yaw);
+  let clear=0;
+  for (let i=1;i<=samples;i++) {
+    const reach=distance*i/samples;
+    if (!canStand(position.x+dx*reach,position.y+dy*reach,barriers,.10)) break;
+    clear=reach;
+  }
+  return clear;
 }
 
 export function walkStep(position,dx,dy,barriers,box) {
