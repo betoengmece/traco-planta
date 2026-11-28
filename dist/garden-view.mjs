@@ -57,7 +57,7 @@ function gardenDepth(u,y) {
   return depth;
 }
 
-export function createGardenView() {
+export function createGardenView({name='Paisagem da janela da cozinha',depthAt=gardenDepth}={}) {
   const geometry=new THREE.PlaneGeometry(1,1,64,52);
   const uniforms={
     photograph:{value:null},
@@ -69,7 +69,7 @@ export function createGardenView() {
   };
   const material=new THREE.ShaderMaterial({vertexShader,fragmentShader,uniforms,side:THREE.DoubleSide,toneMapped:false});
   const mesh=new THREE.Mesh(geometry,material);
-  mesh.name='Paisagem da janela da cozinha';
+  mesh.name=name;
   mesh.visible=false;
   let opening=null;
   let layered=false;
@@ -101,7 +101,7 @@ export function createGardenView() {
         const y=uv.getY(i)-.5;
         const u=.5+x*2.6+Math.sign(x)*.9*Math.pow(Math.abs(x)*2,10);
         const v=.5+y*2.5+Math.sign(y)*.9*Math.pow(Math.abs(y)*2,10);
-        const depth=layered ? gardenDepth(u,1-v) : 3.1;
+        const depth=layered ? depthAt(u,1-v) : 3.1;
         const scale=(eyeZ+depth)/eyeZ;
         points.setXYZ(i,(u-.5)*photoWidth*scale,eyeY+((v-.5)*photoHeight-eyeY)*scale,-depth);
       }
@@ -117,14 +117,14 @@ export function createGardenView() {
       opening={width,height,eyeY,eyeZ};
       update();
     },
-    setPhoto(image,usePlantDepth) {
+    setPhoto(image,useDepth) {
       const previous=uniforms.photograph.value;
       const texture=new THREE.Texture(image);
       texture.colorSpace=THREE.SRGBColorSpace;
       texture.needsUpdate=true;
       uniforms.photograph.value=texture;
       previous?.dispose();
-      layered=usePlantDepth;
+      layered=useDepth;
       update();
     }
   };

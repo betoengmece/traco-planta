@@ -5,7 +5,7 @@ import { houseOutline } from './template.mjs';
 import { surveyOutline } from './survey.mjs?v=20261122-janela-cozinha';
 
 import { canStand, eyeHeight, walkBarriers, walkCameraDistance, walkSpawn, walkStep } from './walk.mjs?v=20261128-caminhada';
-import { createGardenView } from './garden-view.mjs';
+import { createGardenView } from './garden-view.mjs?v=20261128-vista-norte';
 import { livingRoomFurniture } from './living-room.mjs?v=20261126-catalogo';
 import { interiorLayout } from './interior-layout.mjs?v=20261126-reforma3';
 import { makeInterior } from './interior-model.mjs?v=20261126-catalogo';
@@ -19,7 +19,7 @@ const bathTiles={
   bathClay:{finish:'bathBlue',height:1.10,walls:['annex-upper','annex-lower','right-annex','annex-top','annex-bottom']}
 };
 
-export function createModel(host, onZoom) {
+export function createModel(host, onZoom, northKitchenPhoto) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#e8efe9');
   const camera = new THREE.OrthographicCamera(-8, 8, 5, -5, .05, 240);
@@ -78,6 +78,8 @@ export function createModel(host, onZoom) {
   let frameSpan = 10;
   let lastZoom = camera.zoom;
   let kitchenStart=null;
+  let hasNorthKitchenView=false;
+  let hasOriginalKitchenView=false;
   let walking=false;
   let thirdPerson=false;
   let followZoom=1;
@@ -88,6 +90,12 @@ export function createModel(host, onZoom) {
   let sideways=0;
   let previousFrame=null;
   const garden=createGardenView();
+  const northGarden=northKitchenPhoto ? createGardenView({
+    name:'Paisagem da janela norte da cozinha',
+    // The foreground garden is closer than the trees and walls in the upper half.
+    depthAt:(_x,y)=>THREE.MathUtils.lerp(7,1.6,THREE.MathUtils.smoothstep(y,.27,.96))
+  }) : null;
+  let northPhotoRequested=false;
   const interior=makeInterior();
   const exteriorModel=makeExterior(interior);
   const ceiling=new THREE.Group();
@@ -134,14 +142,23 @@ export function createModel(host, onZoom) {
     return figure;
   }
 
-  function addKitchenView(group, opening, wall, center) {
+  function addKitchenView(group, opening, wall, center, windowGarden) {
     const z=wall.thickness/2;
     const height=opening.sill+opening.height/2;
-    garden.mesh.position.set(center,height,-z-.018);
-    group.add(garden.mesh);
-    garden.setOpening(opening.width,opening.height,eyeHeight-height,observerDistance+wall.thickness+.018);
-    kitchenStart={
-      position:group.localToWorld(new THREE.Vector3(center,eyeHeight,z+observerDistance)),
+    const interiorSide=windowGarden===northGarden && wall.b.x<wall.a.x ? -1 : 1;
+    windowGarden.mesh.position.set(center,height,-interiorSide*(z+.018));
+    windowGarden.mesh.rotation.y=interiorSide<0 ? Math.PI : 0;
+    group.add(windowGarden.mesh);
+    windowGarden.setOpening(opening.width,opening.height,eyeHeight-height,observerDistance+wall.thickness+.018);
+    if (windowGarden===northGarden && !northPhotoRequested) {
+      northPhotoRequested=true;
+      const image=new Image();
+      image.onload=()=>northGarden.setPhoto(image,true);
+      image.onerror=()=>{ northPhotoRequested=false; };
+      image.src=northKitchenPhoto;
+    }
+    return {
+      position:group.localToWorld(new THREE.Vector3(center,eyeHeight,interiorSide*(z+observerDistance))),
       target:group.localToWorld(new THREE.Vector3(center,height,0))
     };
   }
@@ -329,13 +346,12 @@ export function createModel(host, onZoom) {
     }
   }
 
-  function addInteriors(project) {
+  function addInteriors(project, {rooms,items}) {
     for (const group of [ceiling,finishes]) {
       for (const surface of group.children) surface.geometry.dispose();
       group.clear();
       assembly.add(group);
     }
-    const {rooms,items}=interiorLayout(project);
     for (const room of rooms) {
       finishes.add(interior.roomSurface(room,false));
       ceiling.add(interior.roomSurface(room,true));
@@ -352,7 +368,7 @@ export function createModel(host, onZoom) {
     solid(group,(start+end)/2,(bottom+top)/2,0,end-start,top-bottom,thickness,mats.wall);
   }
 
-  function addOpening(group, opening, wall, start, end, kitchenWindow) {
+  function addOpening(group, opening, wall, start, end, windowGarden) {
     const width=end-start;
     const center=(start+end)/2;
     const head=opening.sill+opening.height;
@@ -364,11 +380,11 @@ export function createModel(host, onZoom) {
     solid(group,center,head-trim/2,0,width,trim,depth,mats.frame);
     if (opening.type==='window') {
       solid(group,center,opening.sill+trim/2,0,width,trim,depth,mats.frame);
-      if (kitchenWindow) {
+      if (windowGarden) {
         for (const fraction of [.25,.5,.75]) {
           solid(group,start+width*fraction,opening.sill+opening.height/2,0,trim,opening.height-.02,.043,mats.frame);
         }
-        addKitchenView(group,opening,wall,center);
+        return addKitchenView(group,opening,wall,center,windowGarden);
       } else if (opening.casement) {
         const leaf=width*.45;
         const y=opening.sill+opening.height/2;
@@ -392,7 +408,7 @@ export function createModel(host, onZoom) {
     solid(group,hinge,(head-trim)/2,opening.side*leafWidth/2,leafDepth,head-trim,leafWidth,mats.door);
   }
 
-  function addWall(wall,openings,walls,kitchenWindow) {
+  function addWall(wall,openings,walls,windowGardens) {
     const caps=joinedWallCaps(wall,walls);
     const group=new THREE.Group();
     group.position.set(wall.a.x,0,wall.a.y);
@@ -404,7 +420,9 @@ export function createModel(host, onZoom) {
       fillWall(group,position,start,0,wall.height,wall.thickness);
       fillWall(group,start,end,0,opening.sill,wall.thickness);
       fillWall(group,start,end,opening.sill+opening.height,wall.height,wall.thickness);
-      addOpening(group,opening,wall,start,end,opening===kitchenWindow);
+      const windowGarden=windowGardens.get(opening);
+      const startView=addOpening(group,opening,wall,start,end,windowGarden);
+      if (startView && (windowGarden===northGarden || !kitchenStart)) kitchenStart=startView;
       position=end;
     }
     fillWall(group,position,length(wall)+caps.b,0,wall.height,wall.thickness);
@@ -416,15 +434,26 @@ export function createModel(host, onZoom) {
     exterior?.group.traverse(mesh=>{ if (mesh.userData.exteriorSurface) mesh.geometry.dispose(); });
     exterior=null;
     garden.mesh.removeFromParent();
+    northGarden?.mesh.removeFromParent();
     assembly.clear();
     kitchenStart=null;
     barriers=walkBarriers(project);
-    const kitchenWindow=project.openings.find(opening =>
+    const layout=interiorLayout(project);
+    const originalWindow=project.openings.find(opening =>
       opening.wallId==='right-main' && opening.id==='window-2' && opening.type==='window');
+    const northWindow=northGarden && project.kitchenOption==='integrada' &&
+      !project.walls.some(wall=>wall.id==='left-cross') &&
+      project.openings.find(opening =>
+        opening.wallId==='top-left' && opening.id==='window-5' && opening.type==='window');
+    const windowGardens=new Map();
+    hasOriginalKitchenView=Boolean(originalWindow);
+    hasNorthKitchenView=Boolean(northWindow);
+    if (originalWindow) windowGardens.set(originalWindow,garden);
+    if (northWindow) windowGardens.set(northWindow,northGarden);
     project.walls.forEach(wall =>
-      addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls,kitchenWindow));
+      addWall(wall,project.openings.filter(opening=>opening.wallId===wall.id),project.walls,windowGardens));
     addLivingRoom(project);
-    addInteriors(project);
+    addInteriors(project,layout);
     const site=siteExterior(project);
     if (site) {
       exterior=exteriorModel.create(site,houseBox,project.walls.find(wall=>wall.id==='bottom-left'));
@@ -521,6 +550,8 @@ export function createModel(host, onZoom) {
     setWalkInput(nextForward,nextSideways) { forward=nextForward; sideways=nextSideways; },
     get hasExterior() { return Boolean(exterior); },
     get hasKitchenView() { return Boolean(kitchenStart); },
+    get hasOriginalKitchenView() { return hasOriginalKitchenView; },
+    get hasNorthKitchenView() { return hasNorthKitchenView; },
     get walking() { return walking; },
     get thirdPerson() { return thirdPerson; },
     get zoom() { return activeZoom(); },

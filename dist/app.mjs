@@ -19,6 +19,7 @@ const stage = $('stage');
 const context = plan.getContext('2d');
 const kitchenPhotoKey='traco-planta-foto-janela-cozinha';
 const defaultKitchenPhoto=new URL('./assets/vista-cozinha.webp',import.meta.url).href;
+const northKitchenPhoto=new URL('./assets/vista-cozinha-norte.webp',import.meta.url).href;
 const unit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const preciseUnit = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 3 });
 const tools = {
@@ -1679,9 +1680,12 @@ function updateModelControls() {
   const kitchen=visible && model.hasKitchenView;
   $('model-controls').hidden=!visible;
   $('kitchen-view').hidden=!kitchen;
+  $('kitchen-view').querySelector('span').textContent=visible && model.hasNorthKitchenView ?
+    'Janela norte da cozinha' : 'Vista da cozinha';
   $('garage-view').hidden=!visible || !model.hasExterior;
-  $('pick-kitchen-photo').hidden=!kitchen;
-  if (!kitchen) $('kitchen-photo-status').hidden=true;
+  const originalKitchenView=visible && model.hasOriginalKitchenView;
+  $('pick-kitchen-photo').hidden=!originalKitchenView;
+  if (!originalKitchenView) $('kitchen-photo-status').hidden=true;
   $('walk-directions').hidden=!walking;
   const thirdPerson=walking && model.thirdPerson;
   const cameraButton=$('third-person-view');
@@ -1729,7 +1733,7 @@ async function loadKitchenPhoto(url) {
   image.src=url;
   await image.decode();
   model.setKitchenPhoto(image,url===defaultKitchenPhoto);
-  $('pick-kitchen-photo').textContent='Trocar foto da janela';
+  $('pick-kitchen-photo').textContent='Trocar foto da janela original';
 }
 
 async function restoreKitchenPhoto() {
@@ -1778,10 +1782,10 @@ async function setView(next) {
   const host=$('model');
   host.innerHTML='<div class="model-error" role="status">Carregando vista 3D…</div>';
   try {
-    const { createModel }=await import('./model.mjs?v=20261128-caminhada');
+    const { createModel }=await import('./model.mjs?v=20261128-vista-norte');
     if (turn!==viewChange) return;
     host.replaceChildren();
-    model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; });
+    model=createModel(host,value => { if (view==='model') $('zoom').value=Math.round(value*100)+'%'; },northKitchenPhoto);
     model.setProject(project);
     updateModelControls();
     restoreKitchenPhoto();
